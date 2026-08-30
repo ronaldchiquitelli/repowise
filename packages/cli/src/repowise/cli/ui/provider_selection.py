@@ -44,7 +44,7 @@ _PROVIDER_DEFAULTS: dict[str, str] = {
     "claude_cli": "claude_cli/claude-haiku-4-5",
     "opencode": "opencode/default",
     "ollama": "qwen3.5:4b",
-    "openrouter": "google/gemini-3.5-flash-lite",
+    "openrouter": "qwen/qwen3.7-flash",
     "litellm": "groq/llama-3.1-70b-versatile",
 }
 

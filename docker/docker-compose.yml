@@ -3,25 +3,46 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile
+    # Coolify: drop the "127.0.0.1:" bind so the Coolify proxy can reach the
+    # container. Point the main domain on port 3000 (Web UI); 7337 is the API.
     ports:
-      - "127.0.0.1:7337:7337"   # API — loopback only by default
-      - "127.0.0.1:3000:3000"   # Web UI — loopback only by default
+      - "7337:7337"   # API
+      - "3000:3000"   # Web UI — main domain in Coolify
     volumes:
-      # Mount the .repowise directory from your indexed repo
-      - ${REPOWISE_DATA:-./data}:/data
-      # Mount repo directory as read-only to prevent write-based attacks
-      - type: bind
-        source: ${REPO_PATH:?Set REPO_PATH to your repository directory}
-        target: /repos
-        read_only: true
+      # The repository being indexed lives at /repo, and repowise writes it's
+      # .repowise/ index (wiki.db + LanceDB) INSIDE that same dir. Persist /repo
+      # so the index survives rebuilds on Coolify.
+      - repowise-data:/repo
+      # Optional: mount a pre-cloned checkout here instead of letting the
+      # entrypoint clone REPOWISE_REPO_URL into /repo on first start.
+      # - type: bind
+      #   source: /path/to/repo   # host path — only if it exists on the server
+      #   target: /repo
     environment:
-      - REPOWISE_DB_URL=sqlite+aiosqlite:////data/wiki.db
-      - REPOWISE_EMBEDDER=${REPOWISE_EMBEDDER:-mock}
+      # DB lives alongside the vectors in the indexed repo. The entrypoint also
+      # defaults REPOWISE_DB_URL to this when unset.
+      - REPOWISE_DB_URL=sqlite+aiosqlite:////repo/.repowise/wiki.db
+      - REPOWISE_REPO_URL=${REPOWISE_REPO_URL:-}
       - REPOWISE_HOST=0.0.0.0
       # SECURITY: Set this to enable API authentication (required for non-loopback)
       - REPOWISE_API_KEY=${REPOWISE_API_KEY:?Set REPOWISE_API_KEY for Docker deployments}
-      # Set your LLM provider API key
+
+      # ---- LLM: explicitly use OpenRouter ----
+      - REPOWISE_PROVIDER=openrouter
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:?Set OPENROUTER_API_KEY to use OpenRouter}
+      - REPOWISE_MODEL=${REPOWISE_MODEL:-qwen/qwen3.7-flash}   # e.g. openai/gpt-5, x-ai/grok-4
+
+      # ---- Embedder ----
+      # openrouter needs a valid embedding model (few today); switch to "mock"
+      # (lexical search, free), "gemini" or "openai" if you prefer.
+      - REPOWISE_EMBEDDER=${REPOWISE_EMBEDDER:-openrouter}
+      - REPOWISE_EMBEDDING_MODEL=${REPOWISE_EMBEDDING_MODEL:-google/gemini-embedding-001}
+
+      # Kept for compatibility — not required when using OpenRouter
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
     restart: unless-stopped
+
+volumes:
+  repowise-data:

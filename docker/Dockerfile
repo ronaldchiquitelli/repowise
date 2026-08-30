@@ -88,9 +88,19 @@ EXPOSE 7337 3000
 COPY docker/entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
 
-# Run as non-root user (mitigates container escape → root escalation)
+# The entrypoint runs as root so it can clone the repo and write the
+# .repowise index into the mounted /repo volume on first start (volumes owned
+# by the host, not by a fixed uid). The `repowise` user is still created for
+# ownership/isolation once /repo is populated.
 RUN groupadd -r repowise && useradd -r -g repowise -d /app -s /sbin/nologin repowise \
     && chown -R repowise:repowise /app /data
-USER repowise
+
+# /repo is where the repository being indexed is mounted (self-hosting.md
+# convention and what the entrypoint writes the .repowise index into).
+RUN mkdir -p /repo && chown repowise:repowise /repo
+
+# Run as root: the entrypoint clones the repo and runs `repowise init` the
+# first time into the (host-owned) /repo volume, then starts the servers.
+USER root
 
 ENTRYPOINT ["/app/entrypoint.sh"]
