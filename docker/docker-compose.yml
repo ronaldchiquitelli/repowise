@@ -3,11 +3,28 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile
-    # Coolify: drop the "127.0.0.1:" bind so the Coolify proxy can reach the
-    # container. Point the main domain on port 3000 (Web UI); 7337 is the API.
-    ports:
-      - "7337:7337"   # API
-      - "3000:3000"   # Web UI — main domain in Coolify
+    # Coolify: expose via DOMAIN, not published host ports. The proxy needs to
+    # reach the container: point the domain at internal port 3000 (Web UI).
+    # The API (7337) stays internal — the frontend reaches it via localhost.
+    # (Removed the old "ports:" mapping, which bypasses the Coolify proxy.)
+    # Expose the API (7337) and MCP server (7338) to the Coolify proxy so you
+    # can route domains to them. Recommended: use a second domain for the MCP
+    # (mcp.example.com) -> port 7338. The map below makes them reachable inside
+    # the compose network; the proxy handles the public side.
+    expose:
+      - "7337"
+      - "3000"
+      - "7338"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import urllib.request,sys; urllib.request.urlopen('http://127.0.0.1:${PORT_BACKEND:-7337}/health', timeout=5); sys.exit(0)\"",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 300s
     volumes:
       # The repository being indexed lives at /repo, and repowise writes it's
       # .repowise/ index (wiki.db + LanceDB) INSIDE that same dir. Persist /repo

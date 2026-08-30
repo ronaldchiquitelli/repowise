@@ -42,6 +42,14 @@ echo "Starting repowise API server on port ${PORT_BACKEND}..."
 su -p repowise -s /bin/sh -c \
   "REPOWISE_DB_URL='${REPOWISE_DB_URL}' exec uvicorn repowise.server.app:create_app --factory --host 0.0.0.0 --port '${PORT_BACKEND}'" &
 
+# Start the MCP server (streamable HTTP) for external MCP clients on 7338.
+# Expose it via a second domain pointing at container port 7338. The repo path
+# is the POSITIONAL argument (not --repo).
+MCP_PORT="${REPOWISE_MCP_PORT:-7338}"
+echo "Starting repowise MCP server (streamable-http) on port ${MCP_PORT}..."
+su -p repowise -s /bin/sh -c \
+  "REPOWISE_DB_URL='${REPOWISE_DB_URL}' exec repowise mcp '${REPO_DIR}' --transport streamable-http --host 0.0.0.0 --port '${MCP_PORT}'" &
+
 # Start the Next.js frontend
 # outputFileTracingRoot points to the repo root, so Next.js standalone output
 # nests server.js under packages/web/ relative to the standalone root directory.
