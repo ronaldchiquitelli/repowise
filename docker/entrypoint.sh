@@ -10,6 +10,13 @@ INDEX_DB="${REPO_DIR}/.repowise/wiki.db"
 
 REPOWISE_DB_URL="${REPOWISE_DB_URL:-sqlite+aiosqlite:////${INDEX_DB}}"
 
+# `su -p` preserves the container's HOME (usually /root), but the servers run as
+# the `repowise` user and need a home they can write to. The `repowise` user's
+# home is /app (per the Dockerfile), which is owned by repowise. Without this,
+# steps like provider_config (e.g. where to store provider/provider_config.json)
+# fail with "PermissionError: /root/.repowise/provider_config.json".
+export HOME="${REPOWISE_HOME:-/app}"
+
 # 1. Give the repowise user write access to /repo (volumes from the host are
 #    often root-owned). Harmless if already correct.
 chown -R repowise:repowise "${REPO_DIR}" 2>/dev/null || true
