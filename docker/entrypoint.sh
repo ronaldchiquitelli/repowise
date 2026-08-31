@@ -26,8 +26,12 @@ fi
 #    --no-editor-setup: index only, write nothing outside the repo/.repowise.
 if [ ! -f "${INDEX_DB}" ] && [ -d "${REPO_DIR}/.git" ]; then
   echo "No index found — running \`repowise init\` on ${REPO_DIR}..."
+  INIT_MODEL=""
+  if [ -n "${REPOWISE_MODEL:-}" ]; then
+    INIT_MODEL="--model '${REPOWISE_MODEL}'"
+  fi
   su -p repowise -s /bin/sh -c \
-    "export REPOWISE_DB_URL='${REPOWISE_DB_URL}' OPENROUTER_API_KEY='${OPENROUTER_API_KEY:-}' REPOWISE_PROVIDER='${REPOWISE_PROVIDER:-}' REPOWISE_MODEL='${REPOWISE_MODEL:-}' REPOWISE_EMBEDDER='${REPOWISE_EMBEDDER:-}' REPOWISE_EMBEDDING_MODEL='${REPOWISE_EMBEDDING_MODEL:-}'; repowise init '${REPO_DIR}' --yes --no-editor-setup"
+    "export REPOWISE_DB_URL='${REPOWISE_DB_URL}' OPENROUTER_API_KEY='${OPENROUTER_API_KEY:-}' REPOWISE_PROVIDER='${REPOWISE_PROVIDER:-}' REPOWISE_EMBEDDER='${REPOWISE_EMBEDDER:-}' REPOWISE_EMBEDDING_MODEL='${REPOWISE_EMBEDDING_MODEL:-}'; repowise init '${REPO_DIR}' --yes --no-editor-setup ${INIT_MODEL}"
 fi
 
 # 4. Both servers bind 0.0.0.0 inside the container, so without a key the only

@@ -11,6 +11,13 @@ services:
     # can route domains to them. Recommended: use a second domain for the MCP
     # (mcp.example.com) -> port 7338. The map below makes them reachable inside
     # the compose network; the proxy handles the public side.
+    # Publish the Web UI (3000) and MCP server (7338) ports on the host so
+    # Cloudflare Tunnel (cloudflared) and the Coolify proxy can reach them via
+    # 127.0.0.1. The API (7337) stays internal (frontend reaches it via
+    # localhost inside the container).
+    ports:
+      - "3000:3000"
+      - "7338:7338"
     expose:
       - "7337"
       - "3000"
