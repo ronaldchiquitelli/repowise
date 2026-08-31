@@ -34,7 +34,12 @@ COPY packages/ ./packages/
 # Build Next.js frontend
 WORKDIR /app/packages/web
 ENV NEXT_TELEMETRY_DISABLED=1
-ENV NEXT_PUBLIC_REPOWISE_API_URL=http://localhost:7337
+# Keep the client bundle on RELATIVE /api/* calls. NEXT_PUBLIC_* is inlined at
+# build time into the browser bundle; if it were an absolute URL here (e.g.
+# http://localhost:7337) the browser would try the user's own localhost and the
+# UI could not reach the API. Empty string makes apicGet use relative paths that
+# the middleware (/api/* -> REPOWISE_API_URL) proxies to the real backend.
+ENV NEXT_PUBLIC_REPOWISE_API_URL=""
 RUN npm run build
 
 # ---------------------------------------------------------------------------
