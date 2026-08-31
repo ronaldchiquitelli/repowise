@@ -3,6 +3,13 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile
+      # Pass the API key into the frontend build so the browser bundle gets
+      # NEXT_PUBLIC_REPOWISE_API_KEY (required to call authenticated endpoints).
+      # NOTE: the value is visible in the served JS; if the MCP server shares
+      # this same key, anyone with UI read access sees it (it is still needed as
+      # a separate Bearer on /mcp). Use a scoped key if you want deeper isolation.
+      args:
+        NEXT_PUBLIC_REPOWISE_API_KEY: ${REPOWISE_API_KEY:?Set REPOWISE_API_KEY for Docker deployments}
     # Coolify: expose via DOMAIN, not published host ports. The proxy needs to
     # reach the container: point the domain at internal port 3000 (Web UI).
     # The API (7337) stays internal — the frontend reaches it via localhost.

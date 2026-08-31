@@ -40,6 +40,12 @@ ENV NEXT_TELEMETRY_DISABLED=1
 # UI could not reach the API. Empty string makes apicGet use relative paths that
 # the middleware (/api/* -> REPOWISE_API_URL) proxies to the real backend.
 ENV NEXT_PUBLIC_REPOWISE_API_URL=""
+# The browser also needs the API key (NEXT_PUBLIC_* is inlined at build time).
+# Passed as a build arg so it lands in the client bundle and the UI can call
+# authenticated endpoints (repos, providers, jobs, etc.) without getting 401.
+# NOTE: this key is visible in the served JS; keep it scoped (see docker-compose).
+ARG NEXT_PUBLIC_REPOWISE_API_KEY
+ENV NEXT_PUBLIC_REPOWISE_API_KEY=$NEXT_PUBLIC_REPOWISE_API_KEY
 RUN npm run build
 
 # ---------------------------------------------------------------------------
