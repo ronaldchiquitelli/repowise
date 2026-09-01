@@ -12,6 +12,7 @@ import {
   Search,
 } from "lucide-react";
 import { useRepos } from "./repos-context";
+import { Spinner } from "@repowise-dev/ui/ui/spinner";
 import { cn } from "@/lib/utils/cn";
 import {
   GLOBAL_NAV,
@@ -40,7 +41,7 @@ interface SidebarProps {
 }
 
 export function Sidebar({ activeRepoId }: SidebarProps) {
-  const { repos, workspace } = useRepos();
+  const { repos, workspace, isLoading, hasLoadError } = useRepos();
   const pathname = usePathname();
   const derivedActiveRepoId = React.useMemo(() => {
     if (activeRepoId) return activeRepoId;

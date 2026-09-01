@@ -66,6 +66,7 @@ su -p repowise -s /bin/sh -c \
 # nests server.js under packages/web/ relative to the standalone root directory.
 echo "Starting repowise Web UI on port ${PORT_FRONTEND}..."
 cd /app/web/packages/web
+REPOWISE_API_KEY="${REPOWISE_API_KEY:-}" \
 REPOWISE_API_URL="http://localhost:${PORT_BACKEND}" \
 HOSTNAME="0.0.0.0" \
 PORT="${PORT_FRONTEND}" \

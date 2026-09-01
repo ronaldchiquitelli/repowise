@@ -6,13 +6,17 @@ import type { RepoResponse, WorkspaceResponse } from "@/lib/api/types";
 interface RepoContextValue {
   repos: RepoResponse[];
   workspace: WorkspaceResponse | null;
+  /** True while the very first load is in progress (loading spinner state). */
   isLoading: boolean;
+  /** Set to true when the initial fetch throws/fails (shows error message). */
+  hasLoadError: boolean;
 }
 
 const RepoContext = React.createContext<RepoContextValue>({
   repos: [],
   workspace: null,
   isLoading: true,
+  hasLoadError: false,
 });
 
 /**
@@ -31,21 +35,57 @@ const RepoContext = React.createContext<RepoContextValue>({
  * because every client render can read from this context.
  */
 export function ReposProvider({ children }: { children: React.ReactNode }) {
-  const { data: repos, isLoading: reposLoading } = useSWR(
-    "/api/repos",
-    () => listRepos().catch(() => []),
-  );
-  const { data: workspace } = useSWR(
+  const {
+    data: repos,
+    isLoading: reposLoading,
+    error: reposError,
+  } = useSWR("/api/repos", listRepos, {
+    // Never throw away the cached data on focus/reconnect — keep the loaded
+    // state stable across route transitions.
+    revalidateOnFocus: false,
+    revalidateOnReconnect: false,
+    // Retry up to 3 times with exponential backoff; if the first fetch fails
+    // (e.g. the page loaded before the server was ready), retries recover it.
+    errorRetryCount: 3,
+    // Return a fallback empty array so the consuming context never sees `null`.
+    fallbackData: [],
+  });
+  const {
+    data: workspace,
+    error: workspaceError,
+  } = useSWR(
     "/api/workspace",
-    () => getWorkspace(),
+    () => getWorkspace().catch(() => null),
+    {
+      revalidateOnFocus: false,
+      revalidateOnReconnect: false,
+      fallbackData: null,
+      // Don't show workspace errors as fatal — workspace is optional.
+      errorRetryCount: 2,
+    },
   );
+
+  // Track whether the *very first* fetch failed (so Sidebar can show loader vs
+  // error vs empty-state).  Once data has loaded at least once, we stop caring
+  // about transient errors — stale data survives across navs.
+  const [hasAttempted, setHasAttempted] = React.useState(false);
+  React.useEffect(() => {
+    if (!reposLoading && !hasAttempted) {
+      setHasAttempted(true);
+    }
+  }, [reposLoading]);
+
+  // Only surface load errors when: no data arrived, there's an error, and this
+  // was our first attempt (not a stale/error-after-success state).
+  const hasLoadError = repos === undefined && reposError && hasAttempted;
 
   return (
     <RepoContext.Provider
       value={{
         repos: repos ?? [],
         workspace: workspace ?? null,
-        isLoading: reposLoading,
+        isLoading: reposLoading && !repos,
+        hasLoadError,
       }}
     >
       {children}
