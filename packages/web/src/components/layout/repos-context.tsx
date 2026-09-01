@@ -1,5 +1,8 @@
+"use client";
+
 import * as React from "react";
-import { listRepos, getWorkspace } from "@/lib/api/repos";
+import { listRepos } from "@/lib/api/repos";
+import { getWorkspace } from "@/lib/api/workspace";
 import useSWR from "swr";
 import type { RepoResponse, WorkspaceResponse } from "@/lib/api/types";
 
@@ -65,15 +68,13 @@ export function ReposProvider({ children }: { children: React.ReactNode }) {
     },
   );
 
-  // Track whether the *very first* fetch failed (so Sidebar can show loader vs
-  // error vs empty-state).  Once data has loaded at least once, we stop caring
-  // about transient errors — stale data survives across navs.
-  const [hasAttempted, setHasAttempted] = React.useState(false);
-  React.useEffect(() => {
-    if (!reposLoading && !hasAttempted) {
-      setHasAttempted(true);
-    }
-  }, [reposLoading]);
+  // Track whether the *very first* fetch has completed, so hasLoadError only
+  // fires when the first attempt fails (not stale errors after success).
+  const attemptedRef = React.useRef(false);
+  if (!reposLoading && !attemptedRef.current) {
+    attemptedRef.current = true;
+  }
+  const hasAttempted = attemptedRef.current;
 
   // Only surface load errors when: no data arrived, there's an error, and this
   // was our first attempt (not a stale/error-after-success state).

@@ -42,6 +42,7 @@ interface SidebarProps {
 
 export function Sidebar({ activeRepoId }: SidebarProps) {
   const { repos, workspace, isLoading, hasLoadError } = useRepos();
+  const isWorkspace = workspace?.is_workspace ?? false;
   const pathname = usePathname();
   const derivedActiveRepoId = React.useMemo(() => {
     if (activeRepoId) return activeRepoId;
@@ -418,7 +419,7 @@ export function Sidebar({ activeRepoId }: SidebarProps) {
           {repos.length === 0 && !isIconOnly && (
             <>
               <Separator className="my-4" />
-              {reposUnavailable ? (
+              {hasLoadError ? (
                 // Say what happened. Offering "add your first repo" to
                 // someone whose server is unreachable is both wrong and
                 // unactionable.
