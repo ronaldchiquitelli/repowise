@@ -26,14 +26,13 @@ import {
   repoNavGroups,
   isNavItemActive,
 } from "./nav-items";
-import type { RepoResponse, WorkspaceResponse } from "@/lib/api/types";
+import { useRepos } from "./repos-context";
 
-interface MobileNavProps {
-  repos?: RepoResponse[];
-  workspace?: WorkspaceResponse | null;
-}
-
-export function MobileNav({ repos = [], workspace }: MobileNavProps) {
+/**
+ * MobileNav — reads repos + workspace from <ReposProvider>.
+ */
+export function MobileNav() {
+  const { repos, workspace } = useRepos();
   const isWorkspace = workspace?.is_workspace ?? false;
   const [open, setOpen] = React.useState(false);
   const pathname = usePathname();

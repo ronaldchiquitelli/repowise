@@ -12,14 +12,13 @@ import { fileEntityPath } from "@repowise-dev/ui/shared/entity";
 import { getFilesIndex } from "@/lib/api/files";
 import { repoNavItems } from "@/components/layout/nav-items";
 import { pageHref } from "@/lib/utils/page-href";
-import type { RepoResponse, WorkspaceResponse } from "@/lib/api/types";
+import { useRepos } from "@/components/layout/repos-context";
 
-interface CommandPaletteProps {
-  repos: RepoResponse[];
-  workspace?: WorkspaceResponse | null;
-}
-
-export function CommandPalette({ repos, workspace }: CommandPaletteProps) {
+/**
+ * CommandPalette — reads repos + workspace from <ReposProvider>.
+ */
+export function CommandPalette() {
+  const { repos, workspace } = useRepos();
   const isWorkspace = workspace?.is_workspace ?? false;
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");

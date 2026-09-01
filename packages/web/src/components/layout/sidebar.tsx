@@ -11,6 +11,7 @@ import {
   PanelLeft,
   Search,
 } from "lucide-react";
+import { useRepos } from "./repos-context";
 import { cn } from "@/lib/utils/cn";
 import {
   GLOBAL_NAV,
@@ -26,27 +27,20 @@ import { ThemeToggle } from "@repowise-dev/ui/shared/theme-toggle";
 import { AddRepoDialog } from "@/components/repos/add-repo-dialog";
 import { VersionFooter } from "./version-footer";
 import { FeedbackButton } from "./feedback-button";
-import type { RepoResponse, WorkspaceResponse } from "@/lib/api/types";
 
+/**
+ * Sidebar — now reads repos + workspace from the global <ReposProvider>.
+ * Previously received them as props from the root layout's SSR fetch, which
+ * broke navigation to routes like /settings (the server had no auth key).
+ */
 interface SidebarProps {
-  repos?: RepoResponse[];
+  /** Optional explicit active repo id for programmatic overrides. Auto-derived
+   * from the URL when omitted. */
   activeRepoId?: string;
-  workspace?: WorkspaceResponse | null;
-  /**
-   * The repo list could not be fetched, as opposed to being genuinely empty.
-   * Without this the two render identically and a user whose API is down gets
-   * invited to onboard.
-   */
-  reposUnavailable?: boolean;
 }
 
-export function Sidebar({
-  repos = [],
-  activeRepoId,
-  workspace,
-  reposUnavailable = false,
-}: SidebarProps) {
-  const isWorkspace = workspace?.is_workspace ?? false;
+export function Sidebar({ activeRepoId }: SidebarProps) {
+  const { repos, workspace } = useRepos();
   const pathname = usePathname();
   const derivedActiveRepoId = React.useMemo(() => {
     if (activeRepoId) return activeRepoId;

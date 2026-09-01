@@ -13,10 +13,8 @@ import { MobileNav } from "@/components/layout/mobile-nav";
 import { CommandPalette } from "@/components/search/command-palette";
 import { ContextDrawerShell } from "@/components/layout/context-drawer-provider";
 import { SWRProvider } from "@/components/layout/swr-provider";
+import { ReposProvider } from "@/components/layout/repos-context";
 import { UpgradeBanner } from "@/components/layout/upgrade-banner";
-import { listRepos } from "@/lib/api/repos";
-import { getWorkspace } from "@/lib/api/workspace";
-import type { WorkspaceResponse } from "@/lib/api/types";
 import "@/styles/globals.css";
 
 // Serif display face for the docs/wiki reading surfaces (--font-serif token).
@@ -30,32 +28,24 @@ export const metadata: Metadata = {
   description: "Open-source codebase documentation engine",
 };
 
-export default async function RootLayout({
+/**
+ * Root layout — now fully client-driven for repos + workspace.
+ *
+ * Previously this was an async server component that fetched repos and workspace
+ * data during SSR. That broke navigation: every time the user navigated to a
+ * different route (e.g. /settings), Next.js re-rendered the server component,
+ * which had no access to the API key stored in localStorage, returning an empty
+ * sidebar with "Can't reach the API".
+ *
+ * This version wraps the shell in <ReposProvider>, which uses client-side SWR to
+ * load repos + workspace once and keep them alive across all route transitions.
+ * No server-side fetch, no lost auth keys, no disappearing sidebar.
+ */
+export default function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  // Fetch repos + workspace info server-side for the sidebar.
-  //
-  // A rejection is NOT an empty account. Falling back to `[]` silently made
-  // an unreachable API render the exact first-run "add your first repo"
-  // invitation a genuine new user sees, so a user whose server was down was
-  // being onboarded instead of told. `reposUnavailable` keeps the two apart.
-  let repos: Awaited<ReturnType<typeof listRepos>> = [];
-  let workspace: WorkspaceResponse | null = null;
-  let reposUnavailable = false;
-  try {
-    const [reposResult, wsResult] = await Promise.allSettled([
-      listRepos(),
-      getWorkspace(),
-    ]);
-    if (reposResult.status === "fulfilled") repos = reposResult.value;
-    else reposUnavailable = true;
-    if (wsResult.status === "fulfilled") workspace = wsResult.value;
-  } catch {
-    reposUnavailable = true;
-  }
-
   return (
     <html
       lang="en"
@@ -72,19 +62,16 @@ export default async function RootLayout({
         </a>
         <NuqsAdapter>
         <SWRProvider>
+        <ReposProvider>
         <TooltipProvider delayDuration={300}>
           <Suspense fallback={<AppShellSkeleton />}>
             <ContextDrawerShell>
               <div className="flex h-screen flex-col overflow-hidden">
                 <UpgradeBanner />
                 <div className="flex flex-1 overflow-hidden">
-                <Sidebar
-                  repos={repos}
-                  workspace={workspace}
-                  reposUnavailable={reposUnavailable}
-                />
+                <Sidebar />
                 <div className="flex flex-1 flex-col min-w-0 overflow-hidden">
-                  <MobileNav repos={repos} workspace={workspace} />
+                  <MobileNav />
                   {/* A flex column, so anything a route layout stacks above
                       the page (repo breadcrumb, reindex hint, active-job
                       banner) is subtracted from the page's own height rather
@@ -104,10 +91,11 @@ export default async function RootLayout({
                 </div>
                 </div>
               </div>
-              <CommandPalette repos={repos} workspace={workspace} />
+              <CommandPalette />
             </ContextDrawerShell>
           </Suspense>
         </TooltipProvider>
+        </ReposProvider>
         </SWRProvider>
         </NuqsAdapter>
         <ThemedToaster />
