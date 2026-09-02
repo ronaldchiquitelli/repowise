@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
-import { RefreshCw, Zap, AlertTriangle, Download } from "lucide-react";
-import { syncRepo, fullResyncRepo } from "@/lib/api/repos";
+import { RefreshCw, Zap, AlertTriangle, Download, Loader2 } from "lucide-react";
+import { syncRepo, fullResyncRepo, exportRepoZip } from "@/lib/api/repos";
 import { Button } from "@repowise-dev/ui/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@repowise-dev/ui/ui/card";
 import {
@@ -24,7 +24,7 @@ interface Props {
 export function OperationsPanel({ repoId, repoName }: Props) {
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [confirmResync, setConfirmResync] = useState(false);
-  const [loading, setLoading] = useState<"sync" | "resync" | null>(null);
+  const [loading, setLoading] = useState<"sync" | "resync" | "export" | null>(null);
 
   async function handleSync() {
     setLoading("sync");
@@ -34,6 +34,29 @@ export function OperationsPanel({ repoId, repoName }: Props) {
       toast.info(`Sync started — ${repoName}`);
     } catch (e) {
       toast.error("Sync failed", {
+        description: toFriendlyMessage(e),
+      });
+    } finally {
+      setLoading(null);
+    }
+  }
+
+  async function handleExport() {
+    setLoading("export");
+    try {
+      const blob = await exportRepoZip(repoId);
+      // Trigger browser download
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${repoName}-wiki.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast.success("Export downloaded");
+    } catch (e) {
+      toast.error("Export failed", {
         description: toFriendlyMessage(e),
       });
     } finally {
@@ -104,12 +127,15 @@ export function OperationsPanel({ repoId, repoName }: Props) {
               <Button
                 variant="ghost"
                 size="sm"
-                asChild
+                onClick={handleExport}
+                disabled={loading !== null}
               >
-                <a href={`/api/repos/${repoId}/export`} download>
+                {loading === "export" ? (
+                  <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                ) : (
                   <Download className="h-3.5 w-3.5 mr-1.5" />
-                  Export
-                </a>
+                )}
+                {loading === "export" ? "Exporting…" : "Export"}
               </Button>
             </div>
           )}

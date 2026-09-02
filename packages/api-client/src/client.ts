@@ -91,6 +91,10 @@ async function handleResponse<T>(res: Response): Promise<T> {
     }
     throw new ApiClientError(res.status, detail);
   }
+  // 204 No Content — nothing to parse; return undefined.
+  if (res.status === 204) {
+    return undefined as T;
+  }
   return res.json() as Promise<T>;
 }
 
@@ -185,4 +189,4 @@ export async function apiDelete<T>(
   return handleResponse<T>(res);
 }
 
-export { buildHeaders };
+export { buildHeaders, stringifyDetail };

@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import {
   DocsPageActions as DocsPageActionsShell,
   ExportMenu as ExportMenuShell,
@@ -51,6 +52,8 @@ export function ExportMenu({
   /** Accepted for call-site compatibility; the shell builds hrefs itself. */
   repoId?: string;
 }) {
+  const [isZipping, setIsZipping] = useState(false);
+
   const exportPage = () => {
     if (!page) return;
     const filename = (page.target_path || page.title).replace(/\//g, "_") + ".md";
@@ -58,12 +61,31 @@ export function ExportMenu({
     downloadTextFile(header + page.content, filename);
   };
 
+  const handleExportZip = async () => {
+    setIsZipping(true);
+    try {
+      const { exportRepoZip } = await import("@/lib/api/repos");
+      const blob = await exportRepoZip(zipHref.replace(/^.*\/repos\//, "").replace(/\/export.*$/, ""));
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `wiki-export.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } finally {
+      setIsZipping(false);
+    }
+  };
+
   return (
     <ExportMenuShell
-      isExporting={isExporting}
+      isExporting={isExporting || isZipping}
       onExportPage={exportPage}
       onExportAll={onExportAll}
       zipHref={zipHref}
+      onExportZip={handleExportZip}
       hasPage={!!page}
     />
   );

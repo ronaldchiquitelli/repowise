@@ -102,12 +102,17 @@ export function ExportMenu({
   onExportPage,
   onExportAll,
   zipHref,
+  onExportZip,
   hasPage,
 }: {
   isExporting: boolean;
   onExportPage: () => void;
   onExportAll: () => void;
   zipHref: string;
+  /** When provided, the "ZIP archive" menu item calls this callback instead of
+   *  navigating to `zipHref`. Use this to fetch the ZIP with auth headers that
+   *  a plain `<a download>` cannot send. */
+  onExportZip?: () => void;
   hasPage: boolean;
 }) {
   const [open, setOpen] = useState(false);
@@ -166,16 +171,30 @@ export function ExportMenu({
               <FileText className="h-3.5 w-3.5 shrink-0" />
               All pages (Markdown)
             </button>
-            <a
-              role="menuitem"
-              href={zipHref}
-              download
-              className={itemClass}
-              onClick={() => setOpen(false)}
-            >
-              <FolderArchive className="h-3.5 w-3.5 shrink-0" />
-              ZIP archive
-            </a>
+            {onExportZip ? (
+              <button
+                role="menuitem"
+                className={itemClass}
+                onClick={() => {
+                  setOpen(false);
+                  onExportZip();
+                }}
+              >
+                <FolderArchive className="h-3.5 w-3.5 shrink-0" />
+                ZIP archive
+              </button>
+            ) : (
+              <a
+                role="menuitem"
+                href={zipHref}
+                download
+                className={itemClass}
+                onClick={() => setOpen(false)}
+              >
+                <FolderArchive className="h-3.5 w-3.5 shrink-0" />
+                ZIP archive
+              </a>
+            )}
           </div>
         </>
       )}

@@ -1,5 +1,5 @@
 import type { ReposSummaryResponse } from "@repowise-dev/types/repos";
-import { apiGet, apiPost, apiPatch, apiDelete } from "./client";
+import { apiGet, apiPost, apiPatch, apiDelete, doFetch, buildHeaders, ApiClientError, BASE_URL, stringifyDetail } from "./client";
 import type {
   RepoCreate,
   RepoUpdate,
@@ -89,4 +89,25 @@ export async function deleteRepo(repoId: string): Promise<{ ok: boolean; deleted
 
 export async function getRepoStats(repoId: string): Promise<RepoStatsResponse> {
   return apiGet<RepoStatsResponse>(`/api/repos/${repoId}/stats`);
+}
+
+/** Download the wiki as a ZIP archive. Uses `doFetch` directly (not `apiGet`) so
+ *  the blob response is preserved without JSON parsing. The `Authorization`
+ *  header is attached by our client config, so this works where a plain
+ *  `<a download>` would fail (the browser doesn't send custom headers on
+ *  navigation). */
+export async function exportRepoZip(repoId: string): Promise<Blob> {
+  const res = await doFetch(`${BASE_URL}/api/repos/${repoId}/export`, {
+    method: "GET",
+    headers: buildHeaders(),
+  });
+  if (!res.ok) {
+    let detail = res.statusText;
+    try {
+      const json = (await res.json()) as { detail: unknown };
+      detail = stringifyDetail(json.detail) ?? detail;
+    } catch { /* ignore */ }
+    throw new ApiClientError(res.status, detail);
+  }
+  return res.blob();
 }
