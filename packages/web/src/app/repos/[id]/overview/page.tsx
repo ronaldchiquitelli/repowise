@@ -69,7 +69,7 @@ export default async function OverviewPage({ params }: Props) {
   // replaces a client-side SWR fetch that used to waterfall in after paint.
   const [summary, providers, statsHighlights, commitsPage] = await Promise.all([
     safeFetch(() => getOverviewSummary(id)),
-    safeFetch(() => getProviders()),
+    safeFetch(() => getProviders(id)),
     safeFetch(() => getStatsHighlights(id)),
     safeFetch(() => getCommitsPage(id, { sort: "date", limit: COMMIT_LIMIT })),
   ]);

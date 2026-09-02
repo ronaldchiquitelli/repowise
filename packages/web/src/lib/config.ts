@@ -35,13 +35,13 @@ export const config = {
   getApiUrl: () => read(KEYS.apiUrl),
   setApiUrl: (v: string) => write(KEYS.apiUrl, v),
 
-  getProvider: () => read(KEYS.provider) || "litellm",
+  getProvider: () => read(KEYS.provider) || "openrouter",
   setProvider: (v: string) => write(KEYS.provider, v),
 
   getModel: () => read(KEYS.model),
   setModel: (v: string) => write(KEYS.model, v),
 
-  getEmbedder: () => read(KEYS.embedder) || "mock",
+  getEmbedder: () => read(KEYS.embedder) || "openrouter",
   setEmbedder: (v: string) => write(KEYS.embedder, v),
 
   /** Weekend-days preset id; "" means unset, which resolves to Sat/Sun. */
