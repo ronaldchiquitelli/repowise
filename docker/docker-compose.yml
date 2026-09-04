@@ -73,7 +73,15 @@ services:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
-    restart: unless-stopped
+
+      # ---- Vector store: remote Qdrant (opt-in) ----
+      # When QDRANT_URL is set, embeddings go to a remote Qdrant instead of
+      # local LanceDB.  The collection name defaults to "repowise-wiki" and
+      # can be omitted if you prefer the single-collection layout.
+      - QDRANT_URL=${QDRANT_URL:-}
+      - QDRANT_API_KEY=${QDRANT_API_KEY:-}
+      - QDRANT_COLLECTION=${QDRANT_COLLECTION:-repowise-wiki}
+    restart: unless-stop
 
 volumes:
   repowise-data:
