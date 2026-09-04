@@ -53,17 +53,35 @@ def _mock_would_clobber(lance_dir: Path, embedder: Any) -> bool:
 
 
 def build_vector_store(repo_path: Path, embedder: Any) -> Any | None:
-    """Build the repo-local vector store, preferring LanceDB.
+    """Build the repo-local vector store, preferring LanceDB or Qdrant when configured.
 
-    Uses LanceDB at ``.repowise/lancedb`` so previously-embedded pages and
-    decisions stay matchable across runs; falls back to an in-memory store
-    (which only sees this run's vectors) when LanceDB isn't installed.
+    Uses LanceDB at ``.repowise/lancedb`` by default.  When the ``QDRANT_URL``
+    environment variable is set, returns a :class:`QdrantVectorStore` instead
+    (pointing at the remote Qdrant instance).  Falls back to an in-memory store
+    when neither is available.
 
     Returns ``None`` when handing back a store would destroy the existing one
     (see :func:`_mock_would_clobber`). Every caller already treats ``None`` as
     "embedding is off for this run"; full-text search is unaffected either way.
     """
     from repowise.core.persistence.vector_store import InMemoryVectorStore
+
+    # Qdrant takes priority when QDRANT_URL is set (opt-in remote store).
+    import os
+
+    qdrant_url = os.environ.get("QDRANT_URL")
+    if qdrant_url:
+        try:
+            from repowise.core.persistence.vector_store import QdrantVectorStore
+
+            collection = os.environ.get("QDRANT_COLLECTION", "repowise-wiki")
+            return QdrantVectorStore(
+                collection=collection,
+                embedder=embedder,
+                url=qdrant_url,
+            )
+        except ImportError:
+            pass  # fall through to LanceDB/InMemory
 
     lance_dir = repo_path / ".repowise" / "lancedb"
     if _mock_would_clobber(lance_dir, embedder):

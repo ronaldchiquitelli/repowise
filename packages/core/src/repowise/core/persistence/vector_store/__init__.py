@@ -30,11 +30,13 @@ from ._base import VectorStore, cosine_similarity, embed_item
 from .in_memory import InMemoryVectorStore
 from .lancedb_store import LanceDBVectorStore
 from .pgvector_store import PgVectorStore
+from .qdrant_store import QdrantVectorStore
 
 __all__ = [
     "InMemoryVectorStore",
     "LanceDBVectorStore",
     "PgVectorStore",
+    "QdrantVectorStore",
     "VectorStore",
     "cosine_similarity",
     "embed_item",
