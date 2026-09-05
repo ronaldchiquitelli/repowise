@@ -8,7 +8,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ChevronUp, Check } from "lucide-react";
+import { ChevronUp, Check, Pencil } from "lucide-react";
 import { cn } from "../lib/cn";
 
 export interface ModelSelectorProvider {
@@ -25,6 +25,8 @@ export interface ModelSelectorProps {
   activeModel: string | null;
   isLoading?: boolean;
   onActivate: (providerId: string, model: string) => void | Promise<void>;
+  /** Called when the user types a custom model name explicitly. */
+  onCustomModel?: (providerId: string, model: string) => void | Promise<void>;
   /** API-key management belongs in Settings, outside routine model choice. */
   settingsHref?: string;
   /** @deprecated Key management is ignored here and belongs in Settings. */
@@ -40,15 +42,19 @@ export function ModelSelector({
   activeModel,
   isLoading = false,
   onActivate,
+  onCustomModel,
   settingsHref = "/settings",
   emptyLabel = "Select model",
   className,
 }: ModelSelectorProps) {
   const [open, setOpen] = useState(false);
+  const [customInput, setCustomInput] = useState<{ providerId: string; value: string } | null>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
+  const customInputRef = useRef<HTMLInputElement>(null);
   const close = useCallback(() => {
     setOpen(false);
+    setCustomInput(null);
     window.requestAnimationFrame(() => triggerRef.current?.focus());
   }, []);
   useEffect(() => {
@@ -64,6 +70,13 @@ export function ModelSelector({
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [close, open]);
 
+  // Auto-focus custom model input when it appears
+  useEffect(() => {
+    if (customInput) {
+      customInputRef.current?.focus();
+    }
+  }, [customInput]);
+
   const activeP = providers.find((p) => p.id === activeProvider);
   const label = activeP
     ? `${activeP.name} · ${activeModel ?? activeP.default_model}`
@@ -71,6 +84,18 @@ export function ModelSelector({
 
   async function handleSelect(providerId: string, model: string) {
     await onActivate(providerId, model);
+    close();
+  }
+
+  async function handleCustomModelSubmit(providerId: string) {
+    const model = customInput?.value?.trim();
+    if (!model) return;
+    setCustomInput(null);
+    if (onCustomModel) {
+      await onCustomModel(providerId, model);
+    } else {
+      await onActivate(providerId, model);
+    }
     close();
   }
 
@@ -155,6 +180,45 @@ export function ModelSelector({
                           </button>
                         );
                       })}
+
+                      {/* Custom model input for configured providers */}
+                      {isConfigured && customInput?.providerId === provider.id ? (
+                        <div className="flex items-center gap-1 px-2 py-1">
+                          <input
+                            ref={customInputRef}
+                            type="text"
+                            value={customInput.value}
+                            onChange={(e) => setCustomInput({ ...customInput, value: e.target.value })}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.preventDefault();
+                                void handleCustomModelSubmit(provider.id);
+                              }
+                              if (e.key === "Escape") {
+                                setCustomInput(null);
+                              }
+                            }}
+                            placeholder="Enter model name…"
+                            className="min-w-0 flex-1 rounded border border-[var(--color-border-default)] bg-[var(--color-bg-surface)] px-2 py-1 text-xs font-mono text-[var(--color-text-primary)] outline-none placeholder:text-[var(--color-text-tertiary)] focus:border-[var(--color-accent-primary)]"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => void handleCustomModelSubmit(provider.id)}
+                            className="shrink-0 rounded px-1.5 py-1 text-xs text-[var(--color-accent-primary)] hover:bg-[var(--color-bg-elevated)]"
+                          >
+                            Set
+                          </button>
+                        </div>
+                      ) : isConfigured ? (
+                        <button
+                          type="button"
+                          onClick={() => setCustomInput({ providerId: provider.id, value: activeProvider === provider.id && activeModel && !provider.models.includes(activeModel) ? activeModel : "" })}
+                          className="flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-xs text-[var(--color-text-tertiary)] transition-colors hover:bg-[var(--color-bg-elevated)] hover:text-[var(--color-text-secondary)]"
+                        >
+                          <Pencil className="h-3 w-3 shrink-0" />
+                          <span className="flex-1 text-left">Custom model…</span>
+                        </button>
+                      ) : null}
 
                     {!isConfigured &&
                       provider.models.map((model) => (

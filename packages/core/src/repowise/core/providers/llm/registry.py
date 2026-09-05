@@ -49,6 +49,7 @@ _BUILTIN_PROVIDERS: dict[str, tuple[str, str]] = {
     "gemini": ("repowise.core.providers.llm.gemini", "GeminiProvider"),
     "ollama": ("repowise.core.providers.llm.ollama", "OllamaProvider"),
     "litellm": ("repowise.core.providers.llm.litellm", "LiteLLMProvider"),
+    "cloudflare": ("repowise.core.providers.llm.openai", "OpenAIProvider"),
     "deepseek": ("repowise.core.providers.llm.deepseek", "DeepSeekProvider"),
     "kimi": ("repowise.core.providers.llm.kimi", "KimiProvider"),
     "edenai": ("repowise.core.providers.llm.edenai", "EdenAIProvider"),
@@ -75,6 +76,7 @@ PROVIDER_API_KEY_ENVS: dict[str, tuple[str, ...]] = {
     "kimi": ("KIMI_API_KEY",),
     "edenai": ("EDENAI_API_KEY",),
     "litellm": ("LITELLM_API_KEY",),
+    "cloudflare": ("CLOUDFLARE_API_TOKEN",),
 }
 
 # Which env var points a provider at a non-default endpoint. Proxies and
@@ -86,6 +88,7 @@ PROVIDER_BASE_URL_ENVS: dict[str, tuple[str, ...]] = {
     "deepseek": ("DEEPSEEK_BASE_URL",),
     "kimi": ("KIMI_BASE_URL",),
     "edenai": ("EDENAI_BASE_URL",),
+    "cloudflare": ("CLOUDFLARE_BASE_URL",),
     "ollama": ("OLLAMA_BASE_URL",),
     "litellm": ("LITELLM_BASE_URL", "LITELLM_API_BASE"),
 }
@@ -121,6 +124,7 @@ PROVIDER_AUTODETECT_ORDER: tuple[str, ...] = (
     # and an unrelated EDENAI_API_KEY in the environment must not silently take
     # over from a provider the user was already resolving to.
     "edenai",
+    "cloudflare",
 )
 
 # An env var set to "" or whitespace means "not set". CI systems and agent
@@ -306,6 +310,7 @@ def get_provider(
             "kimi": "openai",  # kimi uses the openai package
             "edenai": "openai",  # edenai uses the openai package
             "litellm": "litellm",
+            "cloudflare": "openai",  # cloudflare uses the openai package
             "codex_cli": "@openai/codex",
             "claude_cli": "@anthropic-ai/claude-code",
             "opencode": "opencode",

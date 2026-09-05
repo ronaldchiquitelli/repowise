@@ -121,11 +121,29 @@ export function ChatInterface({
     (source: { pageId: string }) => pageHref(repoId, source.pageId),
     [repoId],
   );
-  const sendWithConversationModel = useCallback((text: string) => sendMessage(text, {
-    context: pageContext,
-    ...(selectedProvider ? { provider: selectedProvider } : {}),
-    ...(selectedModel ? { model: selectedModel } : {}),
-  }), [pageContext, selectedModel, selectedProvider, sendMessage]);
+  const sendWithConversationModel = useCallback((text: string) => {
+    // Handle /model slash command: change model without sending chat message
+    const modelMatch = text.match(/^\/model\s+(.+)/);
+    if (modelMatch) {
+      const modelName = modelMatch[1].trim();
+      if (modelName && selectedProvider) {
+        selectModel(selectedProvider, modelName);
+      } else if (modelName) {
+        // No provider selected yet — find the first configured one
+        const firstConfigured = providers?.providers?.find((p) => p.configured);
+        if (firstConfigured) {
+          selectModel(firstConfigured.id, modelName);
+        }
+      }
+      return;
+    }
+
+    return sendMessage(text, {
+      context: pageContext,
+      ...(selectedProvider ? { provider: selectedProvider } : {}),
+      ...(selectedModel ? { model: selectedModel } : {}),
+    });
+  }, [pageContext, selectedModel, selectedProvider, selectModel, providers, sendMessage]);
   const retryMessage = useCallback((message: ChatUIMessage) => {
     const index = messages.findIndex((candidate) => candidate.id === message.id);
     const previousUser = messages.slice(0, index).reverse().find((candidate) => candidate.role === "user");
@@ -185,7 +203,7 @@ export function ChatInterface({
       draft={draft}
       onDraftChange={setDraft}
       buildCitationHref={buildCitationHref}
-      modelSelectorSlot={<ModelSelector repoId={repoId} activeProvider={selectedProvider} activeModel={selectedModel} onSelect={selectModel} />}
+      modelSelectorSlot={<ModelSelector repoId={repoId} activeProvider={selectedProvider} activeModel={selectedModel} onSelect={selectModel} onCustomModel={selectModel} />}
       onRetry={retryMessage}
       onEditAndResend={editAndResend}
       activeArtifactId={activeArtifactId}

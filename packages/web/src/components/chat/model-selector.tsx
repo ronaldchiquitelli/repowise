@@ -8,11 +8,13 @@ export function ModelSelector({
   activeProvider: controlledProvider,
   activeModel: controlledModel,
   onSelect,
+  onCustomModel,
 }: {
   repoId?: string;
   activeProvider?: string | null;
   activeModel?: string | null;
   onSelect?: (provider: string, model: string) => void;
+  onCustomModel?: (provider: string, model: string) => void;
 }) {
   const {
     providers,
@@ -28,6 +30,7 @@ export function ModelSelector({
       activeModel={controlledModel ?? activeModel}
       isLoading={isLoading}
       onActivate={(id, model) => onSelect?.(id, model)}
+      onCustomModel={(id, model) => onCustomModel?.(id, model)}
       settingsHref="/settings"
     />
   );

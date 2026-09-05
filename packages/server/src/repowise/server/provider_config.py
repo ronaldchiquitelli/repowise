@@ -119,6 +119,23 @@ PROVIDER_CATALOG: list[dict[str, Any]] = [
         "requires_key": False,
     },
     {
+        "id": "cloudflare",
+        "name": "Cloudflare Workers AI",
+        "default_model": "@cf/qwen/qwen2.5-7b-instruct-awq",
+        "models": [
+            "@cf/qwen/qwen2.5-7b-instruct-awq",
+            "@cf/qwen/qwen2.5-32b-instruct-awq",
+            "@cf/qwen/qwen2.5-coder-7b-instruct",
+            "@cf/meta/llama-3.1-8b-instruct",
+            "@cf/meta/llama-3.1-70b-instruct",
+            "@cf/meta/llama-3.2-3b-instruct",
+            "@hf/bartowski/Meta-Llama-3.1-70B-Instruct-quantized",
+        ],
+        "env_keys": ["CLOUDFLARE_API_TOKEN"],
+        "requires_key": True,
+        "requires_account_id": True,
+    },
+    {
         "id": "litellm",
         "name": "LiteLLM",
         "default_model": "groq/llama-3.1-70b-versatile",
@@ -375,19 +392,41 @@ def list_provider_status(
     own configuration (so the UI's model picker shows what chat will actually
     use), and a custom configured model not present in the static catalog is
     surfaced in that provider's ``models`` list so it's selectable.
+
+    ``REPOWISE_PROVIDER`` / ``REPOWISE_MODEL`` env vars are honoured:
+    - When ``REPOWISE_PROVIDER`` is set, that provider is marked configured
+      even without a key (the user explicitly chose it via env var).
+    - When ``REPOWISE_MODEL`` is set, it is always surfaced in the active
+      provider's model list, regardless of ``repo_id`` / ``repo_path``.
     """
     repo_cfg, repo_env = _load_repo_context(repo_path)
     active_id, active_model = _resolve_active_for_repo(repo_id, repo_cfg, repo_env)
 
+    # When REPOWISE_MODEL is set in the process environment but resolution
+    # didn't pick it up (e.g. REPOWISE_PROVIDER is unset and auto-detect chose
+    # a different provider), still surface it so the UI can display what the
+    # env var intends. The resolved active_id/provider takes precedence.
+    env_model = os.environ.get("REPOWISE_MODEL", "").strip()
+    env_provider = os.environ.get("REPOWISE_PROVIDER", "").strip()
+
     providers = []
     for p in PROVIDER_CATALOG:
         has_key = bool(_get_key_for_provider(p["id"], repo_env))
-        configured = has_key or not p["requires_key"]
+        # A provider with REPOWISE_PROVIDER explicitly set is always
+        # considered configured — the user chose it via environment.
+        env_var_explicit = p["id"] == env_provider
+        configured = has_key or not p["requires_key"] or env_var_explicit
         models = list(p["models"])
-        # Surface a configured-but-not-cataloged model (e.g. a local LiteLLM
-        # alias like ``gemma4``) so the picker can display the active choice.
+
+        # Surface the active resolved model when it's not in the catalog.
         if p["id"] == active_id and active_model and active_model not in models:
             models.append(active_model)
+
+        # Surface REPOWISE_MODEL when it's set (independent of resolution)
+        # so the UI picker shows what the env var intends.
+        if p["id"] == active_id and env_model and env_model not in models:
+            models.append(env_model)
+
         providers.append(
             {
                 "id": p["id"],
@@ -547,5 +586,24 @@ def get_chat_provider_instance(
         kwargs["api_key"] = api_key
     if base_url:
         kwargs["base_url"] = base_url
+
+    # ------------------------------------------------------------------
+    # Cloudflare Workers AI: OpenAI-compatible API at a custom endpoint.
+    # The registry maps "cloudflare" → OpenAIProvider, but the base_url
+    # must be constructed dynamically from CLOUDFLARE_ACCOUNT_ID.
+    # ------------------------------------------------------------------
+    if provider_id == "cloudflare":
+        account_id = os.environ.get("CLOUDFLARE_ACCOUNT_ID", "")
+        if not account_id and repo_env:
+            account_id = repo_env.get("CLOUDFLARE_ACCOUNT_ID", "")
+        if not account_id:
+            raise ValueError(
+                "Cloudflare Workers AI requires CLOUDFLARE_ACCOUNT_ID "
+                "set in the environment or .repowise/.env"
+            )
+        kwargs["base_url"] = (
+            f"https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/v1"
+        )
+        return get_provider("openai", with_rate_limiter=False, **kwargs)
 
     return get_provider(provider_id, with_rate_limiter=False, **kwargs)
