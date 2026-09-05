@@ -139,3 +139,22 @@ class RepoSummaryRow(BaseModel):
 
 class ReposSummaryResponse(BaseModel):
     repos: list[RepoSummaryRow]
+
+
+class CloneRepoInput(BaseModel):
+    """Input for cloning a GitHub repository via the server."""
+
+    repo: str  # "owner/repo-name" or full URL like "https://github.com/owner/repo"
+    branch: str = ""  # optional branch override (default: repo's default branch)
+
+
+class GithubRepoItem(BaseModel):
+    """Simplified GitHub repository info returned by the github-list endpoint."""
+
+    name: str
+    full_name: str
+    private: bool
+    description: str | None = None
+    url: str
+    default_branch: str = "main"
+    html_url: str = ""

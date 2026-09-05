@@ -79,6 +79,14 @@ services:
       - CLOUDFLARE_ACCOUNT_ID=${CLOUDFLARE_ACCOUNT_ID:-}
       - CLOUDFLARE_API_TOKEN=${CLOUDFLARE_API_TOKEN:-}
 
+      # ---- GitHub (private repos) ----
+      # Personal access token with 'repo' scope — enables cloning private repos
+      # via the UI or add-repo.sh. Generate at https://github.com/settings/tokens
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+      # HMAC secret for verifying GitHub webhook push-event signatures.
+      # Optional but recommended when the server is publicly reachable.
+      - REPOWISE_GITHUB_WEBHOOK_SECRET=${REPOWISE_GITHUB_WEBHOOK_SECRET:-repowise-default-secret-change-me}
+
       # ---- Embedder ----
       # openrouter needs a valid embedding model (few today); switch to "mock"
       # (lexical search, free), "gemini" or "openai" if you prefer.

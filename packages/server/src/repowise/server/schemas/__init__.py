@@ -167,6 +167,8 @@ from .pages import (
 )
 from .pagination import Paginated
 from .repository import (
+    CloneRepoInput,
+    GithubRepoItem,
     RepoCreate,
     RepoResponse,
     ReposSummaryResponse,

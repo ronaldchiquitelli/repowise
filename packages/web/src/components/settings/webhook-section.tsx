@@ -26,20 +26,26 @@ export function WebhookSection() {
   return (
     <OverviewSection
       title="Webhooks"
-      description="Register one of these in GitHub or GitLab and a push re-syncs the index. The URLs use this dashboard's address, so substitute a public hostname if the host cannot reach it."
+      description="Register one of these in GitHub or GitLab and a push re-syncs the index automatically. The URLs use this dashboard's address, so substitute a public hostname if the host cannot reach it."
     >
       <SettingsRows>
-        <SettingsRow label="GitHub" hint="Content type: application/json.">
+        <SettingsRow
+          label="GitHub"
+          hint="Content type: application/json. Add in repo Settings → Webhooks → Add webhook."
+        >
           <CopyLine value={`${serverUrl}/api/webhooks/github`} />
         </SettingsRow>
 
-        <SettingsRow label="GitLab" hint="Push events.">
+        <SettingsRow
+          label="GitLab"
+          hint="Push events. Add in repo Settings → Webhooks."
+        >
           <CopyLine value={`${serverUrl}/api/webhooks/gitlab`} />
         </SettingsRow>
 
         <SettingsRow
           label="Signature verification"
-          hint="Omit both to skip verification while developing locally."
+          hint="Protects webhooks from spoofed requests. Set on the server via docker-compose or Coolify env vars."
         >
           <div className="space-y-1.5">
             <p className="font-mono text-xs text-[var(--color-text-secondary)]">
@@ -49,7 +55,30 @@ export function WebhookSection() {
               REPOWISE_GITLAB_WEBHOOK_TOKEN=your-token
             </p>
             <p className="text-xs text-[var(--color-text-tertiary)]">
-              Set on the server, not here.
+              Must match the secret/token configured in GitHub/GitLab. A default is pre-configured.
+            </p>
+          </div>
+        </SettingsRow>
+
+        <SettingsRow
+          label="GitHub private repos"
+          hint="Required to clone private repos from the Add Repository dialog."
+        >
+          <div className="space-y-1.5">
+            <p className="font-mono text-xs text-[var(--color-text-secondary)]">
+              GITHUB_TOKEN=ghp_your-personal-access-token
+            </p>
+            <p className="text-xs text-[var(--color-text-tertiary)]">
+              Create at{" "}
+              <a
+                href="https://github.com/settings/tokens"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[var(--color-accent-primary)] hover:underline"
+              >
+                github.com/settings/tokens
+              </a>{" "}
+              with <code>repo</code> scope.
             </p>
           </div>
         </SettingsRow>

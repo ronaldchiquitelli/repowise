@@ -16,6 +16,30 @@ export async function listRepos(): Promise<RepoResponse[]> {
   return apiGet<RepoResponse[]>("/api/repos");
 }
 
+/** Clone a GitHub repository (private or public) using GITHUB_TOKEN. */
+export async function cloneGithubRepo(
+  repo: string,
+  branch?: string,
+): Promise<{ local_path: string; name: string; url: string; default_branch: string }> {
+  return apiPost("/api/repos/clone", { repo, branch: branch || "" });
+}
+
+/** List GitHub repositories for the authenticated user. */
+export async function listGithubRepos(
+  query?: string,
+): Promise<Array<{
+  name: string;
+  full_name: string;
+  private: boolean;
+  description: string | null;
+  url: string;
+  default_branch: string;
+  html_url: string;
+}>> {
+  const params = query ? `?q=${encodeURIComponent(query)}` : "";
+  return apiGet(`/api/repos/github-list${params}`);
+}
+
 /** One-call payload for the multi-repo dashboard: every registered repo's
  *  headline figures. Replaces `listRepos` plus a `getRepoStats` and a
  *  `getGitSummary` per repo, whose cost grew with the repository count. */

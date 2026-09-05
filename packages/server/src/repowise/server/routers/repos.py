@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import io
+import json
 import logging
 import zipfile
 from pathlib import Path, PurePosixPath
@@ -34,6 +35,8 @@ from repowise.server.job_executor import execute_job
 from repowise.server.mcp_server._meta import read_live_head, resolve_indexed_commit
 from repowise.server.routers._sorting import repository_sort_key
 from repowise.server.schemas import (
+    CloneRepoInput,
+    GithubRepoItem,
     RepoCreate,
     RepoResponse,
     ReposSummaryResponse,
@@ -152,6 +155,151 @@ async def _enqueue_index_job(request: Request, session_factory, repo_id: str) ->
         job_id = job.id
     _launch_job_task(request, job_id, repo_id)
     return job_id
+
+
+# ---------------------------------------------------------------------------
+# GitHub integration: clone private repos + list user's repos
+# ---------------------------------------------------------------------------
+
+
+def _parse_github_repo(repo_input: str) -> tuple[str, str]:
+    """Parse a GitHub repo identifier into (owner, name).
+
+    Accepts ``"owner/repo"``, ``https://github.com/owner/repo``, or
+    ``https://github.com/owner/repo.git``.
+    """
+    import re
+
+    raw = repo_input.strip().rstrip("/")
+    # Full URL
+    m = re.match(r"^https?://github\.com/([^/]+)/([^/]+?)(?:\.git)?$", raw)
+    if m:
+        return m.group(1), m.group(2)
+    # owner/repo
+    m = re.match(r"^([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+)$", raw)
+    if m:
+        return m.group(1), m.group(2)
+    raise HTTPException(
+        status_code=400,
+        detail=f"Cannot parse GitHub repo: {repo_input!r}. "
+        "Use 'owner/repo' or a full GitHub URL.",
+    )
+
+
+@router.post("/clone", status_code=201)
+async def clone_github_repo(
+    body: CloneRepoInput,
+    request: Request,
+    session: AsyncSession = Depends(get_db_session),
+) -> dict:
+    """Clone a GitHub repo into /repo/<name> using GITHUB_TOKEN."""
+    import os
+    import subprocess
+
+    token = os.environ.get("GITHUB_TOKEN", "").strip()
+    if not token:
+        raise HTTPException(
+            status_code=400,
+            detail="GITHUB_TOKEN is not configured. Set it in docker-compose or Coolify.",
+        )
+    owner, name = _parse_github_repo(body.repo)
+    clone_url = f"https://x-access-token:{token}@github.com/{owner}/{name}.git"
+    repo_root = os.environ.get("REPOWISE_REPO_PATH", "/repo")
+    target = f"{repo_root}/{name}"
+
+    if ".." in name:
+        raise HTTPException(status_code=400, detail="Invalid repo name.")
+    if os.path.isdir(f"{target}/.git"):
+        raise HTTPException(status_code=409, detail=f"Directory {target} already exists.")
+
+    branch_args = ["--branch", body.branch] if body.branch else ["--depth", "1"]
+    cmd = ["git", "clone", "--quiet"] + branch_args + [clone_url, target]
+
+    try:
+        proc = await asyncio.to_thread(
+            lambda: subprocess.run(
+                cmd, capture_output=True, text=True, timeout=300, check=False,
+            )
+        )
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=504, detail="Clone timed out (300s).")
+
+    if proc.returncode != 0:
+        if os.path.isdir(target) and not os.path.isdir(f"{target}/.git"):
+            import shutil
+            shutil.rmtree(target, ignore_errors=True)
+        raise HTTPException(
+            status_code=422,
+            detail=f"git clone failed: {proc.stderr.strip() or 'unknown error'}",
+        )
+    # Fix ownership
+    try:
+        await asyncio.to_thread(
+            lambda: subprocess.run(
+                ["chown", "-R", "repowise:repowise", target],
+                capture_output=True, timeout=30, check=False,
+            )
+        )
+    except Exception:
+        logger.warning("chown failed for %s (non-fatal)", target)
+
+    return {
+        "local_path": target,
+        "name": name,
+        "url": f"https://github.com/{owner}/{name}",
+        "default_branch": body.branch or "main",
+    }
+
+
+@router.get("/github-list")
+async def list_github_repos(
+    q: str = "",
+    page: int = 1,
+    per_page: int = 50,
+) -> list[GithubRepoItem]:
+    """List the authenticated user's GitHub repositories via GITHUB_TOKEN."""
+    import os
+    import urllib.request
+    import urllib.parse
+
+    token = os.environ.get("GITHUB_TOKEN", "").strip()
+    if not token:
+        raise HTTPException(status_code=400, detail="GITHUB_TOKEN is not configured.")
+
+    params: dict[str, str | int] = {
+        "per_page": min(per_page, 100), "page": page,
+        "sort": "updated", "direction": "desc",
+    }
+    if q:
+        params["q"] = f"{q} user:@me"
+        url = "https://api.github.com/search/repositories?" + urllib.parse.urlencode(params)
+    else:
+        url = "https://api.github.com/user/repos?" + urllib.parse.urlencode(params)
+
+    req = urllib.request.Request(url)
+    req.add_header("Authorization", f"Bearer {token}")
+    req.add_header("Accept", "application/vnd.github+json")
+    req.add_header("X-GitHub-Api-Version", "2022-11-28")
+
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            data = json.loads(resp.read().decode())
+    except urllib.error.HTTPError as exc:
+        raise HTTPException(status_code=502, detail=f"GitHub API error: {exc.code}")
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Failed to reach GitHub: {exc}")
+
+    items = data.get("items", data) if isinstance(data, dict) else data
+    return [
+        GithubRepoItem(
+            name=r["name"], full_name=r["full_name"],
+            private=r.get("private", False), description=r.get("description"),
+            url=r.get("clone_url", r.get("html_url", "")),
+            default_branch=r.get("default_branch", "main"),
+            html_url=r.get("html_url", ""),
+        )
+        for r in items
+    ]
 
 
 @router.get("", response_model=list[RepoResponse])

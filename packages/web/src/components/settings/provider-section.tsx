@@ -34,7 +34,7 @@ const MODEL_PLACEHOLDERS: Record<string, string> = {
   ollama: "qwen3.5:4b",
   litellm: "groq/llama-3.1-70b-versatile",
   openrouter: "qwen/qwen3.7-flash",
-  cloudflare: "@cf/qwen/qwen2.5-7b-instruct-awq",
+  cloudflare: "@cf/qwen/qwen2.5-coder-32b-instruct",
   mock: "mock",
 };
 

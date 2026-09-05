@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
 import { useSWRConfig } from "swr";
-import { createRepo, preflightIndex, startIndexJob } from "@/lib/api/repos";
+import { createRepo, preflightIndex, startIndexJob, cloneGithubRepo, listGithubRepos } from "@/lib/api/repos";
 import { getProviders } from "@/lib/api/providers";
 import { Button } from "@repowise-dev/ui/ui/button";
 import {
@@ -58,6 +58,8 @@ export function AddRepoDialog({
         return res.active;
       },
       settingsHref: "/settings",
+      cloneRepo: (repo, branch) => cloneGithubRepo(repo, branch),
+      listGithubRepos: (query) => listGithubRepos(query),
       onDone: (repoId, jobId) => {
         toast.success(jobId ? "Repository added, indexing started" : "Repository added");
         router.push(`/repos/${repoId}/overview`);
