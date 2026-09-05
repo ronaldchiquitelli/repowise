@@ -58,11 +58,24 @@ services:
       # SECURITY: Set this to enable API authentication (required for non-loopback)
       - REPOWISE_API_KEY=${REPOWISE_API_KEY:?Set REPOWISE_API_KEY for Docker deployments}
 
-      # ---- LLM: explicitly use OpenRouter ----
-      - REPOWISE_PROVIDER=openrouter
+      # ---- LLM: OpenRouter (default) ----
+      - REPOWISE_PROVIDER=${REPOWISE_PROVIDER:-openrouter}
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:?Set OPENROUTER_API_KEY to use OpenRouter}
       - REPOWISE_MODEL=${REPOWISE_MODEL:-qwen/qwen3.7-flash}   # e.g. openai/gpt-5, x-ai/grok-4
 
+      # OpenAI-compatible endpoint (e.g. Cloudflare Workers AI).
+      # Set REPOWISE_PROVIDER=openai + OPENAI_BASE_URL to use instead of OpenRouter.
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      # Base URL for OpenAI-compatible endpoint (Cloudflare Workers AI example):
+      #   https://api.cloudflare.com/client/v4/accounts/<ACCOUNT_ID>/ai/v1
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-}
+
+      # LiteLLM provider (alternative to OpenRouter / OpenAI).
+      # Set REPOWISE_PROVIDER=litellm to use. Model format: "provider/model".
+      - LITELLM_API_KEY=${LITELLM_API_KEY:-}
+      - LITELLM_API_BASE=${LITELLM_API_BASE:-}
+
+      # Cloudflare Workers AI credentials (for LiteLLM or custom usage)
       - CLOUDFLARE_ACCOUNT_ID=${CLOUDFLARE_ACCOUNT_ID:-}
       - CLOUDFLARE_API_TOKEN=${CLOUDFLARE_API_TOKEN:-}
 
