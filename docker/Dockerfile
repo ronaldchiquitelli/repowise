@@ -95,6 +95,10 @@ ENV HOSTNAME=0.0.0.0
 # Expose both ports
 EXPOSE 7337 3000
 
+# Helper script to clone repos with correct permissions
+COPY docker/add-repo.sh /usr/local/bin/add-repo
+RUN chmod +x /usr/local/bin/add-repo
+
 # Startup script
 COPY docker/entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh

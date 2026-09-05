@@ -20,6 +20,10 @@ export HOME="${REPOWISE_HOME:-/app}"
 # 1. Give the repowise user write access to /repo (volumes from the host are
 #    often root-owned). Harmless if already correct.
 chown -R repowise:repowise "${REPO_DIR}" 2>/dev/null || true
+# SGID bit: new files/dirs inside /repo inherit the repowise group, so a
+# repo cloned as root (e.g. via the container terminal) is still writable
+# by the repowise server without a manual chown.
+chmod g+s "${REPO_DIR}" 2>/dev/null || true
 
 # 2. First run: if /repo has no repo, clone it so there is something to index.
 #    Set REPOWISE_REPO_URL to the git repo to clone when you are not mounting a
