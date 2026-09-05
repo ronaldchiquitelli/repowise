@@ -71,16 +71,17 @@ async def _reindex(repo_path, embedder_name: str, batch_size: int) -> None:
     else:
         console.print(f"[green]Using {embedder_name} embedder[/green]")
 
-    # --- Create LanceDB vector store ---
-    lance_dir = Path(repo_path) / ".repowise" / "lancedb"
-    try:
-        from repowise.core.persistence.vector_store import LanceDBVectorStore
-    except ImportError:
-        console.print("[red]lancedb not installed. Run: uv pip install lancedb[/red]")
-        raise click.Abort() from None
+    # --- Build vector store (prefers Qdrant if QDRANT_URL is set) ---
+    from repowise.cli.providers.vector_store import build_vector_store as _bvs
 
-    lance_dir.mkdir(parents=True, exist_ok=True)
-    vector_store = LanceDBVectorStore(str(lance_dir), embedder=embedder_impl)
+    try:
+        vector_store = _bvs(repo_path, embedder_impl)
+    except Exception as exc:
+        console.print(f"[yellow]Warning: could not build vector store: {exc}[/yellow]")
+        # Fall back to in-memory for best-effort operation
+        from repowise.core.persistence.vector_store import InMemoryVectorStore
+
+        vector_store = InMemoryVectorStore(embedder=embedder_impl)
 
     # --- Open database ---
     db_url = get_db_url_for_repo(repo_path)

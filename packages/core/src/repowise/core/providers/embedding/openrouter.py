@@ -107,7 +107,9 @@ class OpenRouterEmbedder:
                     base_url="https://openrouter.ai/api/v1",
                     timeout=timeout,
                 )
-            response = self._client.embeddings.create(model=model, input=texts)  # type: ignore[union-attr]
+            response = self._client.embeddings.create(
+                model=model, input=texts, encoding_format="float",
+            )  # type: ignore[union-attr]
             raw_vectors = [list(item.embedding) for item in response.data]
             widths = {len(v) for v in raw_vectors}
             if widths and widths != {expected_dimensions}:
