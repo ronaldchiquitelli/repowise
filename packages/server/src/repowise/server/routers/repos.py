@@ -192,18 +192,23 @@ async def clone_github_repo(
     request: Request,
     session: AsyncSession = Depends(get_db_session),
 ) -> dict:
-    """Clone a GitHub repo into /repo/<name> using GITHUB_TOKEN."""
+    """Clone a GitHub repo into /repo/<name>.
+
+    Uses GITHUB_TOKEN when available (for private repos); falls back to
+    unauthenticated clone for public repos.
+    """
     import os
     import subprocess
 
     token = os.environ.get("GITHUB_TOKEN", "").strip()
-    if not token:
-        raise HTTPException(
-            status_code=400,
-            detail="GITHUB_TOKEN is not configured. Set it in docker-compose or Coolify.",
-        )
     owner, name = _parse_github_repo(body.repo)
-    clone_url = f"https://x-access-token:{token}@github.com/{owner}/{name}.git"
+
+    # Authenticated URL when token is available, plain HTTPS otherwise
+    if token:
+        clone_url = f"https://x-access-token:{token}@github.com/{owner}/{name}.git"
+    else:
+        clone_url = f"https://github.com/{owner}/{name}.git"
+
     repo_root = os.environ.get("REPOWISE_REPO_PATH", "/repo")
     target = f"{repo_root}/{name}"
 

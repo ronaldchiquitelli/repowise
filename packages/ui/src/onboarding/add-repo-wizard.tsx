@@ -144,6 +144,7 @@ export interface AddRepoWizardProps {
 export function AddRepoWizard({ adapter, open, onOpenChange }: AddRepoWizardProps) {
   const [step, setStep] = useState<Step>("details");
   const [repoMode, setRepoMode] = useState<"public" | "private">("public");
+  const [publicSource, setPublicSource] = useState<"local" | "url">("local");
   const [name, setName] = useState("");
   const [localPath, setLocalPath] = useState("");
   const [url, setUrl] = useState("");
@@ -188,6 +189,7 @@ export function AddRepoWizard({ adapter, open, onOpenChange }: AddRepoWizardProp
   const reset = useCallback(() => {
     setStep("details");
     setRepoMode("public");
+    setPublicSource("local");
     setName("");
     setLocalPath("");
     setUrl("");
@@ -262,13 +264,18 @@ export function AddRepoWizard({ adapter, open, onOpenChange }: AddRepoWizardProp
     if (!name.trim()) return;
 
     if (repoMode === "private") {
-      // Private: navigate to the repo browser
       setStep("select-repo");
       if (githubRepos.length === 0) loadGithubRepos();
       return;
     }
 
-    // Public mode: existing flow
+    // Public + From URL: clone from GitHub
+    if (publicSource === "url") {
+      if (!url.trim()) return;
+      return handlePublicUrlClone();
+    }
+
+    // Public + Local path: register only (existing flow)
     if (!localPath.trim()) return;
     setSubmitting(true);
     setPathError(null);
@@ -289,6 +296,32 @@ export function AddRepoWizard({ adapter, open, onOpenChange }: AddRepoWizardProp
       else setError(msg);
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function handlePublicUrlClone() {
+    if (!adapter.cloneRepo || !url.trim()) return;
+    setStep("cloning");
+    setCloningStatus("Cloning repository…");
+    setError(null);
+    try {
+      const result = await adapter.cloneRepo(url.trim(), branch.trim() || undefined);
+      setLocalPath(result.local_path);
+      if (!name.trim()) setName(result.name);
+      setCloningStatus("Registering…");
+      const repo = await adapter.createRepo({
+        name: result.name,
+        local_path: result.local_path,
+        url: result.url,
+        default_branch: result.default_branch,
+        wiki_style: wikiStyle !== DEFAULT_WIKI_STYLE ? wikiStyle : undefined,
+      });
+      setRepoId(repo.id);
+      await runPreflight(repo.id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Clone failed");
+      setStep("details");
+      setCloningStatus(null);
     }
   }
 
@@ -402,44 +435,77 @@ export function AddRepoWizard({ adapter, open, onOpenChange }: AddRepoWizardProp
 
               {repoMode === "public" ? (
                 <>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="repo-path">Local Path</Label>
-                    <Input
-                      id="repo-path"
-                      placeholder="C:\Users\you\projects\my-project"
-                      value={localPath}
-                      onChange={(e) => {
-                        setLocalPath(e.target.value);
-                        setPathError(null);
-                      }}
-                      className="font-mono"
-                      aria-invalid={!!pathError}
-                      aria-describedby="repo-path-hint"
-                      required
-                    />
-                    {pathError ? (
-                      <p id="repo-path-hint" className="text-xs text-[var(--color-outdated)]">
-                        {pathError}
-                      </p>
-                    ) : (
-                      <p id="repo-path-hint" className="text-xs text-[var(--color-text-tertiary)]">
-                        Absolute path to a local git checkout.
-                      </p>
-                    )}
+                  {/* Local path / From URL sub-toggle */}
+                  <div className="flex rounded-md border border-[var(--color-border-default)] overflow-hidden">
+                    <button
+                      type="button"
+                      className={`flex-1 py-1 text-[11px] font-medium transition-colors ${
+                        publicSource === "local"
+                          ? "bg-[var(--color-bg-elevated)] text-[var(--color-text-primary)]"
+                          : "text-[var(--color-text-tertiary)] hover:text-[var(--color-text-secondary)]"
+                      }`}
+                      onClick={() => setPublicSource("local")}
+                    >
+                      Local path
+                    </button>
+                    <button
+                      type="button"
+                      className={`flex-1 py-1 text-[11px] font-medium transition-colors ${
+                        publicSource === "url"
+                          ? "bg-[var(--color-bg-elevated)] text-[var(--color-text-primary)]"
+                          : "text-[var(--color-text-tertiary)] hover:text-[var(--color-text-secondary)]"
+                      }`}
+                      onClick={() => setPublicSource("url")}
+                    >
+                      From URL
+                    </button>
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
+
+                  {publicSource === "local" ? (
                     <div className="space-y-1.5">
-                      <Label htmlFor="repo-url">
-                        Remote URL{" "}
-                        <span className="font-normal text-[var(--color-text-tertiary)]">(optional)</span>
-                      </Label>
-                      <Input id="repo-url" placeholder="https://github.com/org/repo" value={url} onChange={(e) => setUrl(e.target.value)} />
+                      <Label htmlFor="repo-path">Local Path</Label>
+                      <Input
+                        id="repo-path"
+                        placeholder="/repo/my-project"
+                        value={localPath}
+                        onChange={(e) => { setLocalPath(e.target.value); setPathError(null); }}
+                        className="font-mono"
+                        aria-invalid={!!pathError}
+                        aria-describedby="repo-path-hint"
+                        required
+                      />
+                      {pathError ? (
+                        <p id="repo-path-hint" className="text-xs text-[var(--color-outdated)]">{pathError}</p>
+                      ) : (
+                        <p id="repo-path-hint" className="text-xs text-[var(--color-text-tertiary)]">
+                          Absolute path to a local git checkout.
+                        </p>
+                      )}
                     </div>
-                    <div className="space-y-1.5">
-                      <Label htmlFor="repo-branch">Default Branch</Label>
-                      <Input id="repo-branch" placeholder="main" value={branch} onChange={(e) => setBranch(e.target.value)} />
-                    </div>
-                  </div>
+                  ) : (
+                    <>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="repo-url-public">GitHub URL</Label>
+                        <Input
+                          id="repo-url-public"
+                          placeholder="https://github.com/org/repo"
+                          value={url}
+                          onChange={(e) => setUrl(e.target.value)}
+                          required
+                        />
+                        <p className="text-xs text-[var(--color-text-tertiary)]">
+                          Paste any public GitHub repository URL. It will be cloned into the container.
+                        </p>
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="repo-branch">
+                          Branch{" "}
+                          <span className="font-normal text-[var(--color-text-tertiary)]">(optional)</span>
+                        </Label>
+                        <Input id="repo-branch" placeholder="main" value={branch} onChange={(e) => setBranch(e.target.value)} />
+                      </div>
+                    </>
+                  )}
                 </>
               ) : (
                 <p className="text-xs text-[var(--color-text-tertiary)]">
@@ -499,7 +565,7 @@ export function AddRepoWizard({ adapter, open, onOpenChange }: AddRepoWizardProp
                 </Button>
                 <Button
                   type="submit"
-                  disabled={submitting || !name.trim() || (repoMode === "public" && !localPath.trim())}
+                  disabled={submitting || !name.trim() || (repoMode === "public" && publicSource === "local" && !localPath.trim()) || (repoMode === "public" && publicSource === "url" && !url.trim())}
                 >
                   {submitting ? "Adding…" : "Continue"}
                 </Button>
