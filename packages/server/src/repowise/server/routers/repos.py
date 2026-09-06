@@ -706,12 +706,22 @@ async def delete_repo(
 
     # Clean up FTS index (FTS5 virtual table has no FK cascade). Use the
     # repo's own FTS instance when it lives in a per-repo database.
-    repo_fts = getattr(request.app.state, "workspace_fts", {}).get(repo_id) or fts
-    if repo_fts is not None:
-        await repo_fts.delete_many(page_ids)
+    try:
+        repo_fts = getattr(request.app.state, "workspace_fts", {}).get(repo_id) or fts
+        if repo_fts is not None:
+            await repo_fts.delete_many(page_ids)
+    except Exception as exc:
+        logger.warning("fts_cleanup_failed", extra={"repo_id": repo_id, "error": str(exc)})
 
     # Delete repository — CASCADE handles all child ORM tables
-    await crud.delete_repository(session, repo_id)
+    try:
+        await crud.delete_repository(session, repo_id)
+    except Exception as exc:
+        logger.error("repo_delete_failed", extra={"repo_id": repo_id, "error": str(exc)})
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to delete repository: {exc}",
+        )
 
     # Drop per-repo routing and the primary-DB registry row, if any, so the
     # repo neither lingers in listings nor resurrects on the next restart.
