@@ -57,7 +57,7 @@ services:
       - REPOWISE_HOST=0.0.0.0
       # SECURITY: Set this to enable API authentication (required for non-loopback)
       - REPOWISE_API_KEY=${REPOWISE_API_KEY:?Set REPOWISE_API_KEY for Docker deployments}
-
+      
       # ---- LLM: OpenRouter (default) ----
       - REPOWISE_PROVIDER=${REPOWISE_PROVIDER:-openrouter}
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:?Set OPENROUTER_API_KEY to use OpenRouter}

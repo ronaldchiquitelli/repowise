@@ -8,6 +8,19 @@ set -e
 REPO_DIR="${REPOWISE_REPO_PATH:-/repo}"
 INDEX_DB="${REPO_DIR}/.repowise/wiki.db"
 
+# Workspace mode: /repo IS the workspace root.
+# All repos added via add-repo live as subdirectories under /repo/.
+# We auto-discover them and generate the workspace config dynamically.
+WORKSPACE_DIR="${REPO_DIR}"
+USE_WORKSPACE=false
+
+# Check if /repo has multiple git repos (workspace mode)
+REPO_COUNT=$(find "${REPO_DIR}" -maxdepth 2 -name ".git" -type d 2>/dev/null | wc -l)
+if [ "${REPO_COUNT}" -gt 1 ]; then
+  USE_WORKSPACE=true
+  echo "✅ Workspace mode detected: ${REPO_COUNT} repos found in ${REPO_DIR}"
+fi
+
 REPOWISE_DB_URL="${REPOWISE_DB_URL:-sqlite+aiosqlite:////${INDEX_DB}}"
 
 # `su -p` preserves the container's HOME (usually /root), but the servers run as
@@ -45,6 +58,39 @@ if [ ! -f "${INDEX_DB}" ] && [ -d "${REPO_DIR}/.git" ]; then
     "export REPOWISE_DB_URL='${REPOWISE_DB_URL}' OPENROUTER_API_KEY='${OPENROUTER_API_KEY:-}' REPOWISE_PROVIDER='${REPOWISE_PROVIDER:-}' REPOWISE_EMBEDDER='${REPOWISE_EMBEDDER:-}' REPOWISE_EMBEDDING_MODEL='${REPOWISE_EMBEDDING_MODEL:-}' OPENAI_API_KEY='${OPENAI_API_KEY:-}' OPENAI_BASE_URL='${OPENAI_BASE_URL:-}' LITELLM_API_KEY='${LITELLM_API_KEY:-}' LITELLM_API_BASE='${LITELLM_API_BASE:-}' CLOUDFLARE_ACCOUNT_ID='${CLOUDFLARE_ACCOUNT_ID:-}' CLOUDFLARE_API_TOKEN='${CLOUDFLARE_API_TOKEN:-}' GITHUB_TOKEN='${GITHUB_TOKEN:-}' REPOWISE_GITHUB_WEBHOOK_SECRET='${REPOWISE_GITHUB_WEBHOOK_SECRET:-}'; repowise init '${REPO_DIR}' --yes --no-editor-setup ${INIT_MODEL}"
 fi
 
+# 3b. Workspace mode: auto-discover and index all repos under /repo
+if [ "${USE_WORKSPACE}" = true ]; then
+  echo "Auto-discovering repos in ${REPO_DIR}..."
+  
+  # Create workspace config if it doesn't exist
+  if [ ! -f "${REPO_DIR}/.repowise-workspace.yaml" ]; then
+    echo "Creating workspace config..."
+    cat > "${REPO_DIR}/.repowise-workspace.yaml" << 'WSEOF'
+version: 1
+repos: []
+WSEOF
+  fi
+  
+  # Run workspace scan to auto-discover new repos
+  su -p repowise -s /bin/sh -c \
+    "export HOME='${HOME}' REPOWISE_DB_URL='${REPOWISE_DB_URL}' OPENROUTER_API_KEY='${OPENROUTER_API_KEY:-}' REPOWISE_PROVIDER='${REPOWISE_PROVIDER:-}' REPOWISE_EMBEDDER='${REPOWISE_EMBEDDER:-}' REPOWISE_EMBEDDING_MODEL='${REPOWISE_EMBEDDING_MODEL:-}' OPENAI_API_KEY='${OPENAI_API_KEY:-}' OPENAI_BASE_URL='${OPENAI_BASE_URL:-}' LITELLM_API_KEY='${LITELLM_API_KEY:-}' LITELLM_API_BASE='${LITELLM_API_BASE:-}' CLOUDFLARE_ACCOUNT_ID='${CLOUDFLARE_ACCOUNT_ID:-}' CLOUDFLARE_API_TOKEN='${CLOUDFLARE_API_TOKEN:-}' GITHUB_TOKEN='${GITHUB_TOKEN:-}' REPOWISE_GITHUB_WEBHOOK_SECRET='${REPOWISE_GITHUB_WEBHOOK_SECRET:-}'; repowise workspace scan '${REPO_DIR}' --yes" 2>/dev/null || true
+  
+  # Index each unindexed repo
+  for repo_path in "${REPO_DIR}"/*/; do
+    if [ -d "${repo_path}/.git" ]; then
+      repo_name=$(basename "${repo_path}")
+      repo_index="${repo_path}/.repowise/wiki.db"
+      if [ ! -f "${repo_index}" ]; then
+        echo "  Indexing ${repo_name}..."
+        su -p repowise -s /bin/sh -c \
+          "export HOME='${HOME}' REPOWISE_DB_URL='sqlite+aiosqlite:////${repo_index}' OPENROUTER_API_KEY='${OPENROUTER_API_KEY:-}' REPOWISE_PROVIDER='${REPOWISE_PROVIDER:-}' REPOWISE_EMBEDDER='${REPOWISE_EMBEDDER:-}' REPOWISE_EMBEDDING_MODEL='${REPOWISE_EMBEDDING_MODEL:-}' OPENAI_API_KEY='${OPENAI_API_KEY:-}' OPENAI_BASE_URL='${OPENAI_BASE_URL:-}' LITELLM_API_KEY='${LITELLM_API_KEY:-}' LITELLM_API_BASE='${LITELLM_API_BASE:-}' CLOUDFLARE_ACCOUNT_ID='${CLOUDFLARE_ACCOUNT_ID:-}' CLOUDFLARE_API_TOKEN='${CLOUDFLARE_API_TOKEN:-}' GITHUB_TOKEN='${GITHUB_TOKEN:-}' REPOWISE_GITHUB_WEBHOOK_SECRET='${REPOWISE_GITHUB_WEBHOOK_SECRET:-}'; repowise init '${repo_path}' --yes --no-editor-setup"
+      else
+        echo "  ${repo_name} already indexed, skipping..."
+      fi
+    fi
+  done
+fi
+
 # 4. Both servers bind 0.0.0.0 inside the container, so without a key the only
 #    thing standing between the API and the network is the port publishing.
 if [ -z "${REPOWISE_API_KEY}" ]; then
@@ -62,8 +108,18 @@ su -p repowise -s /bin/sh -c \
 # is the POSITIONAL argument (not --repo).
 MCP_PORT="${REPOWISE_MCP_PORT:-7338}"
 echo "Starting repowise MCP server (streamable-http) on port ${MCP_PORT}..."
+
+# Determine MCP server path: workspace mode uses /repo as workspace root
+if [ "${USE_WORKSPACE}" = true ]; then
+  MCP_PATH="${REPO_DIR}"
+  echo "   Using workspace mode: ${MCP_PATH} (${REPO_COUNT} repos)"
+else
+  MCP_PATH="${REPO_DIR}"
+  echo "   Using single repo mode: ${MCP_PATH}"
+fi
+
 su -p repowise -s /bin/sh -c \
-  "REPOWISE_DB_URL='${REPOWISE_DB_URL}' OPENROUTER_API_KEY='${OPENROUTER_API_KEY:-}' REPOWISE_PROVIDER='${REPOWISE_PROVIDER:-}' REPOWISE_MODEL='${REPOWISE_MODEL:-}' REPOWISE_EMBEDDER='${REPOWISE_EMBEDDER:-}' REPOWISE_EMBEDDING_MODEL='${REPOWISE_EMBEDDING_MODEL:-}' OPENAI_API_KEY='${OPENAI_API_KEY:-}' OPENAI_BASE_URL='${OPENAI_BASE_URL:-}' LITELLM_API_KEY='${LITELLM_API_KEY:-}' LITELLM_API_BASE='${LITELLM_API_BASE:-}' CLOUDFLARE_ACCOUNT_ID='${CLOUDFLARE_ACCOUNT_ID:-}' CLOUDFLARE_API_TOKEN='${CLOUDFLARE_API_TOKEN:-}' GITHUB_TOKEN='${GITHUB_TOKEN:-}' REPOWISE_GITHUB_WEBHOOK_SECRET='${REPOWISE_GITHUB_WEBHOOK_SECRET:-}' exec repowise mcp '${REPO_DIR}' --transport streamable-http --host 0.0.0.0 --port '${MCP_PORT}'" &
+  "REPOWISE_DB_URL='${REPOWISE_DB_URL}' OPENROUTER_API_KEY='${OPENROUTER_API_KEY:-}' REPOWISE_PROVIDER='${REPOWISE_PROVIDER:-}' REPOWISE_MODEL='${REPOWISE_MODEL:-}' REPOWISE_EMBEDDER='${REPOWISE_EMBEDDER:-}' REPOWISE_EMBEDDING_MODEL='${REPOWISE_EMBEDDING_MODEL:-}' OPENAI_API_KEY='${OPENAI_API_KEY:-}' OPENAI_BASE_URL='${OPENAI_BASE_URL:-}' LITELLM_API_KEY='${LITELLM_API_KEY:-}' LITELLM_API_BASE='${LITELLM_API_BASE:-}' CLOUDFLARE_ACCOUNT_ID='${CLOUDFLARE_ACCOUNT_ID:-}' CLOUDFLARE_API_TOKEN='${CLOUDFLARE_API_TOKEN:-}' GITHUB_TOKEN='${GITHUB_TOKEN:-}' REPOWISE_GITHUB_WEBHOOK_SECRET='${REPOWISE_GITHUB_WEBHOOK_SECRET:-}' exec repowise mcp '${MCP_PATH}' --transport streamable-http --host 0.0.0.0 --port '${MCP_PORT}' --all" &
 
 # Start the Next.js frontend
 # outputFileTracingRoot points to the repo root, so Next.js standalone output
