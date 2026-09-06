@@ -254,8 +254,37 @@ async def clone_github_repo(
 
     if ".." in name:
         raise HTTPException(status_code=400, detail="Invalid repo name.")
+
+    # If the directory already exists and is a git repo, skip the clone
+    # but pull the latest changes to ensure the code is up to date.
     if os.path.isdir(f"{target}/.git"):
-        raise HTTPException(status_code=409, detail=f"Directory {target} already exists.")
+        # Pull latest changes
+        try:
+            await asyncio.to_thread(
+                lambda: subprocess.run(
+                    ["git", "-C", target, "pull", "--quiet", "--ff-only"],
+                    capture_output=True, text=True, timeout=60, check=False,
+                )
+            )
+        except Exception:
+            pass
+        # Fix ownership
+        try:
+            await asyncio.to_thread(
+                lambda: subprocess.run(
+                    ["chown", "-R", "repowise:repowise", target],
+                    capture_output=True, timeout=30, check=False,
+                )
+            )
+        except Exception:
+            pass
+        github_url = f"https://github.com/{owner}/{name}"
+        return {
+            "local_path": target,
+            "name": name,
+            "url": github_url,
+            "default_branch": body.branch or "main",
+        }
 
     branch_args = ["--branch", body.branch] if body.branch else ["--depth", "1"]
     cmd = ["git", "clone", "--quiet"] + branch_args + [clone_url, target]
