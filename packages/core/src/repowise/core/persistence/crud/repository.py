@@ -191,12 +191,51 @@ async def delete_repository(session: AsyncSession, repo_id: str) -> bool:
 
     Returns True if deleted, False if not found.
 
-    NOTE: The caller should clean up the FTS index *before* calling this,
-    since the CASCADE will delete Page rows and we lose the page IDs.
+    Deletes child rows explicitly before the repository to handle SQLite
+    databases that were created without ``ON DELETE CASCADE`` constraints
+    (older schema versions or manual table creation).
     """
     repo = await session.get(Repository, repo_id)
     if repo is None:
         return False
+
+    from sqlalchemy import text
+
+    # Disable FK checks temporarily so we can delete in any order.
+    await session.execute(text("PRAGMA foreign_keys = OFF"))
+
+    # All tables that have a repository_id column (leaf-first where possible).
+    _ChildTables = [
+        "health_file_metrics", "health_findings", "health_snapshots",
+        "fix_events", "git_file_blame", "git_function_blame", "blame_indices",
+        "git_commits", "git_metadata", "wiki_symbols", "wiki_page_versions",
+        "code_quality_snapshots", "dead_code_findings",
+        "security_findings", "performance_opportunities", "performance_summaries",
+        "refactoring_suggestions", "refactoring_opportunities", "refactoring_summaries",
+        "coverage_files", "test_coverage",
+        "episodes", "episode_edges", "episode_nodes",
+        "external_system_edges", "external_systems",
+        "decision_evidence", "decision_edges", "decision_node_links", "decision_records",
+        "graph_edges", "graph_metrics", "graph_node_membership", "graph_nodes",
+        "conversations", "chat_messages", "llm_costs",
+        "answer_cache", "knowledge_graph_layers", "knowledge_graph_tour_steps",
+        "kg_project_meta", "kg_node_meta",
+        "webhook_events",
+        "wiki_pages", "pages", "generation_jobs", "pipeline_jobs",
+    ]
+    for table in _ChildTables:
+        try:
+            await session.execute(
+                text(f"DELETE FROM {table} WHERE repository_id = :rid"),
+                {"rid": repo_id},
+            )
+        except Exception:
+            # Table may not exist or column may not exist — skip silently.
+            pass
+
+    # Re-enable FK checks.
+    await session.execute(text("PRAGMA foreign_keys = ON"))
+
     await session.delete(repo)
     await session.flush()
     return True

@@ -7,6 +7,7 @@ import contextlib
 import io
 import json
 import logging
+import os
 import zipfile
 from pathlib import Path, PurePosixPath
 from typing import Any, Literal
@@ -69,6 +70,13 @@ async def create_repo(
     configured — is enqueued immediately; the created job's id is returned
     as ``initial_job_id`` so clients can attach to its progress stream.
     """
+    # Auto-detect GitHub URL from git remote when not provided.
+    # This is critical for webhook matching — without a URL in the DB,
+    # push events cannot be matched to the registered repository.
+    url = body.url
+    if not url and body.local_path:
+        url = _read_git_remote_url(body.local_path) or ""
+
     if not body.index:
         # Metadata-only registration (kept for API compatibility and tests):
         # the row lands in the ambient DB; per-repo storage is established
@@ -78,7 +86,7 @@ async def create_repo(
             session,
             name=body.name,
             local_path=body.local_path,
-            url=body.url,
+            url=url,
             default_branch=body.default_branch,
             settings=body.settings,
         )
@@ -93,7 +101,7 @@ async def create_repo(
         app_state,
         local_path=body.local_path,
         name=body.name,
-        url=body.url,
+        url=url,
         default_branch=body.default_branch,
         settings=body.settings,
     )
@@ -104,7 +112,7 @@ async def create_repo(
         repo = await crud.get_repository(repo_session, repo_id)
         if repo is not None:
             repo.name = body.name
-            repo.url = body.url
+            repo.url = url
             repo.default_branch = body.default_branch
             if body.settings is not None:
                 import json as _json
@@ -122,7 +130,7 @@ async def create_repo(
             repo_id=repo_id,
             name=body.name,
             local_path=body.local_path,
-            url=body.url,
+            url=url,
             default_branch=body.default_branch,
             settings=body.settings,
         )
@@ -155,6 +163,38 @@ async def _enqueue_index_job(request: Request, session_factory, repo_id: str) ->
         job_id = job.id
     _launch_job_task(request, job_id, repo_id)
     return job_id
+
+
+# ---------------------------------------------------------------------------
+# Git remote URL detection
+# ---------------------------------------------------------------------------
+
+
+def _read_git_remote_url(local_path: str) -> str | None:
+    """Read the origin remote URL from a local git repository.
+
+    Returns the URL as a string, or None if not a git repo or no origin remote.
+    Strips trailing ``.git`` for consistency with webhook URL matching.
+    """
+    import subprocess
+
+    git_dir = os.path.join(local_path, ".git")
+    if not os.path.isdir(git_dir):
+        return None
+    try:
+        result = subprocess.run(
+            ["git", "-C", local_path, "remote", "get-url", "origin"],
+            capture_output=True, text=True, timeout=5, check=False,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            url = result.stdout.strip()
+            # Normalise: strip .git suffix for webhook matching
+            if url.endswith(".git"):
+                url = url[:-4]
+            return url
+    except Exception:
+        pass
+    return None
 
 
 # ---------------------------------------------------------------------------

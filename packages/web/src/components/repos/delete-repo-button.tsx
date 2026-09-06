@@ -13,7 +13,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@repowise-dev/ui/ui/dialog";
-import { toFriendlyMessage } from "@repowise-dev/ui/lib/errors";
+import { toFriendlyMessage, toDebugDetails } from "@repowise-dev/ui/lib/errors";
 
 interface DeleteRepoButtonProps {
   repoId: string;
@@ -44,7 +44,12 @@ export function DeleteRepoButton({
         router.refresh();
       }
     } catch (err) {
-      toast.error(`Failed to delete: ${toFriendlyMessage(err)}`);
+      const friendly = toFriendlyMessage(err);
+      const debug = toDebugDetails(err);
+      toast.error(friendly, {
+        description: debug !== friendly ? debug : undefined,
+        duration: 10000,
+      });
     } finally {
       setDeleting(false);
     }

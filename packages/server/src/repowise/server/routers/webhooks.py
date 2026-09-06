@@ -55,14 +55,26 @@ async def _find_repo_by_scm_url(session: AsyncSession, url: str) -> Repository |
     """Return the registered repo whose URL matches *url*, or None.
 
     Exact normalized match only — never a truncated ``contains`` prefix.
+    Falls back to matching by repo name (last path segment) when no
+    exact URL match is found, covering repos registered without a URL.
     """
     needle = _normalize_scm_url(url)
     if not needle:
         return None
+
+    # Extract repo name from the URL (last path segment)
+    repo_name = needle.rsplit("/", 1)[-1] if "/" in needle else needle
+
     result = await session.execute(select(Repository))
     for repo in result.scalars().all():
         if _normalize_scm_url(repo.url) == needle:
             return repo
+
+    # Fallback: match by name when URL is empty or doesn't match
+    for repo in result.scalars().all():
+        if not repo.url and repo.name.lower() == repo_name:
+            return repo
+
     return None
 
 

@@ -419,6 +419,184 @@ def _reconcile_schema(connection: object) -> None:
         raise failures[0][1]
 
 
+# ---------------------------------------------------------------------------
+# FK constraint reconciliation (SQLite only)
+# ---------------------------------------------------------------------------
+
+# Tables where the ORM model declares ON DELETE CASCADE on the repository FK,
+# but the live SQLite table may have been created without it (older versions).
+# Each entry is (table_name, fk_column, referenced_table, ondelete).
+_CASCADE_FK_TARGETS: list[tuple[str, str, str, str]] = [
+    (t, "repository_id", "repositories", "CASCADE")
+    for t in [
+        "generation_jobs", "wiki_pages", "wiki_page_versions", "wiki_symbols",
+        "graph_nodes", "graph_edges", "graph_metrics", "graph_node_membership",
+        "external_systems", "decision_records", "conversations", "llm_costs",
+        "dead_code_findings", "health_findings", "health_file_metrics",
+        "health_snapshots", "refactoring_suggestions", "refactoring_opportunities",
+        "refactoring_summaries", "performance_opportunities", "performance_summaries",
+        "coverage_files", "test_coverage", "answer_cache",
+        "knowledge_graph_layers", "knowledge_graph_tour_steps",
+        "kg_project_meta", "kg_node_meta", "pipeline_jobs",
+    ]
+] + [
+    # webhook_events uses SET NULL (not CASCADE) because it's nullable
+    ("webhook_events", "repository_id", "repositories", "SET NULL"),
+]
+
+
+def _reconcile_fk_constraints(connection: object) -> None:
+    """Rebuild SQLite tables whose FK → repositories lacks ON DELETE CASCADE.
+
+    SQLite stores the FK constraint inside the CREATE TABLE DDL.  There is no
+    ``ALTER TABLE … ALTER CONSTRAINT`` so the only way to fix a stale FK is to
+    rebuild the table via the standard copy-rename pattern:
+
+      1. Create ``_new_<table>`` with the ORM's current schema
+      2. Copy rows from the old table
+      3. Drop the old table
+      4. Rename ``_new_<table>`` → ``<table>``
+
+    This runs inside ``_reconcile_schema`` and is SQLite-only.  It is skipped
+    when the table already has the correct constraint.
+    """
+    dialect = connection.dialect  # type: ignore[attr-defined]
+    if dialect.name != "sqlite":
+        return
+
+    inspector = inspect(connection)
+    db_tables = set(inspector.get_table_names())
+
+    for table_name, fk_col, ref_table, ondelete in _CASCADE_FK_TARGETS:
+        if table_name not in db_tables:
+            continue
+
+        # Check if existing FK already has the correct ONDELETE
+        fks = inspector.get_foreign_keys(table_name)
+        has_correct = any(
+            fk["referred_table"] == ref_table
+            and fk["referred_columns"] == ["id"]
+            and fk.get("ondelete") == ondelete
+            and fk_col in fk["constrained_columns"]
+            for fk in fks
+        )
+        if has_correct:
+            continue
+
+        # Need to rebuild.  Use SQLAlchemy's Table objects for DDL.
+        meta = Base.metadata
+        if table_name not in meta.tables:
+            continue
+        orm_table = meta.tables[table_name]
+
+        # Create temp table with correct schema
+        tmp_name = f"_repowise_fk_fix_{table_name}"
+        try:
+            # Drop leftover temp table from a previous failed run
+            connection.execute(text(f"DROP TABLE IF EXISTS \"{tmp_name}\""))
+        except Exception:
+            pass
+
+        # Build CREATE TABLE DDL from ORM model
+        ddl = _build_create_table_ddl(orm_table, dialect)
+        ddl = ddl.replace(f'"{table_name}"', f'"{tmp_name}"')
+        try:
+            connection.execute(text(ddl))
+        except Exception as exc:
+            log.warning(
+                "fk_reconcile_create_tmp_failed",
+                table=table_name, error=str(exc),
+            )
+            continue
+
+        # Copy data
+        try:
+            connection.execute(
+                text(f'INSERT INTO "{tmp_name}" SELECT * FROM "{table_name}"')
+            )
+        except Exception as exc:
+            log.warning(
+                "fk_reconcile_copy_failed",
+                table=table_name, error=str(exc),
+            )
+            connection.execute(text(f'DROP TABLE IF EXISTS "{tmp_name}"'))
+            continue
+
+        # Drop old, rename new
+        try:
+            connection.execute(text(f'DROP TABLE "{table_name}"'))
+            connection.execute(text(f'ALTER TABLE "{tmp_name}" RENAME TO "{table_name}"'))
+            log.info(
+                "fk_reconcile_table_rebuilt",
+                table=table_name, ondelete=ondelete,
+            )
+        except Exception as exc:
+            log.warning(
+                "fk_reconcile_rename_failed",
+                table=table_name, error=str(exc),
+            )
+            # Try to restore from temp
+            try:
+                connection.execute(text(f'DROP TABLE IF EXISTS "{table_name}"'))
+                connection.execute(text(f'ALTER TABLE "{tmp_name}" RENAME TO "{table_name}"'))
+            except Exception:
+                pass
+
+
+def _build_create_table_ddl(table, dialect) -> str:
+    """Render a CREATE TABLE statement for a SQLAlchemy Table object."""
+    from sqlalchemy.schema import CreateTable
+    compiled = CreateTable(table).compile(dialect=dialect)
+    return str(compiled)
+
+
+# ---------------------------------------------------------------------------
+# FK integrity check (startup diagnostic)
+# ---------------------------------------------------------------------------
+
+
+async def check_fk_integrity(engine: AsyncEngine) -> list[str]:
+    """Check that all ORM-declared FK constraints exist in the live database.
+
+    Returns a list of human-readable warning strings.  Empty means healthy.
+    Non-blocking — intended for startup logging, not enforcement.
+    """
+    if engine.dialect.name != "sqlite":
+        return []  # Postgres uses Alembic; checks there are Alembic's job.
+
+    warnings: list[str] = []
+
+    def _check(connection: object) -> None:
+        inspector = inspect(connection)
+        db_tables = set(inspector.get_table_names())
+
+        for table_name, fk_col, ref_table, expected_ondelete in _CASCADE_FK_TARGETS:
+            if table_name not in db_tables:
+                continue
+            fks = inspector.get_foreign_keys(table_name)
+            matching = [
+                fk for fk in fks
+                if fk["referred_table"] == ref_table
+                and fk["referred_columns"] == ["id"]
+                and fk_col in fk["constrained_columns"]
+            ]
+            if not matching:
+                warnings.append(
+                    f"FK missing: {table_name}.{fk_col} → {ref_table}.id"
+                )
+            elif matching[0].get("ondelete") != expected_ondelete:
+                current = matching[0].get("ondelete") or "NONE"
+                warnings.append(
+                    f"FK mismatch: {table_name}.{fk_col} "
+                    f"ondelete={current} (expected {expected_ondelete})"
+                )
+
+    async with engine.connect() as conn:
+        await conn.run_sync(_check)
+
+    return warnings
+
+
 async def init_db(engine: AsyncEngine) -> None:
     """Create all SQLAlchemy tables and the FTS index for the given engine.
 
@@ -427,11 +605,19 @@ async def init_db(engine: AsyncEngine) -> None:
     missing columns/indexes back-filled in place rather than hitting a
     cryptic ``no such column`` error from the ORM.
 
+    On SQLite, also reconciles FK constraints (ON DELETE CASCADE) that may
+    have been baked in by an older version of the ORM models.
+
     Safe to call on an already-initialised database (idempotent).
     """
     async with engine.begin() as conn:
+        # Enable FK enforcement on SQLite (OFF by default).
+        if engine.dialect.name == "sqlite":
+            await conn.execute(text("PRAGMA foreign_keys = ON"))
+
         await conn.run_sync(Base.metadata.create_all)
         await conn.run_sync(_reconcile_schema)
+        await conn.run_sync(_reconcile_fk_constraints)
 
         # SQLite-only: create FTS5 virtual table for full-text search.
         # PostgreSQL uses a GIN index added by the Alembic migration.

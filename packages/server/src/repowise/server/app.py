@@ -424,6 +424,17 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     except Exception:
         logger.debug("repo_db_rediscovery_skipped", exc_info=True)
 
+    # FK integrity check — log warnings if the live schema is stale.
+    try:
+        from repowise.core.persistence.database import check_fk_integrity
+
+        fk_warnings = await check_fk_integrity(engine)
+        if fk_warnings:
+            for w in fk_warnings:
+                logger.warning("fk_integrity_warning", extra={"detail": w})
+    except Exception:
+        logger.debug("fk_integrity_check_skipped", exc_info=True)
+
     logger.info("repowise_server_started", extra={"version": __version__})
     try:
         yield
