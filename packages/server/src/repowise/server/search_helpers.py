@@ -22,12 +22,38 @@ _vector_store_locks: dict[str, asyncio.Lock] = {}
 
 
 def _build_repo_vector_store(repo_path: Path, embedder: Any, *, create: bool) -> Any | None:
-    """Open a repo-local LanceDB store, with an in-memory write fallback.
+    """Open a vector store, preferring Qdrant when QDRANT_URL is set.
 
-    Search-only callers do not create a new store when no persisted index
-    exists. Job callers pass ``create=True`` so server-generated embeddings use
-    the same durable ``.repowise/lancedb`` location as the CLI.
+    Qdrant is a shared remote store — all repos embed into one collection,
+    differentiated by page_id. Falls back to LanceDB (repo-local) when
+    Qdrant is not configured, then to InMemory as last resort.
     """
+    import os
+
+    # Qdrant takes priority when QDRANT_URL is set (opt-in remote store).
+    qdrant_url = os.environ.get("QDRANT_URL")
+    if qdrant_url:
+        try:
+            from repowise.core.persistence.vector_store import QdrantVectorStore
+
+            collection = os.environ.get("QDRANT_COLLECTION", "repowise-wiki")
+            store = QdrantVectorStore(
+                collection=collection,
+                embedder=embedder,
+                url=qdrant_url,
+            )
+            logger.info(
+                "qdrant_vector_store_selected",
+                extra={"url": qdrant_url, "collection": collection},
+            )
+            return store
+        except Exception as exc:
+            logger.warning(
+                "qdrant_unavailable_falling_back",
+                extra={"error": str(exc)},
+            )
+
+    # LanceDB (repo-local) fallback.
     lance_dir = repo_path / ".repowise" / "lancedb"
     if not create and not lance_dir.is_dir():
         return None

@@ -224,6 +224,17 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         embedder,
     )
 
+    # Ensure Qdrant collection exists at startup (created lazily on first write,
+    # but the first write may never come if no indexing/search has been triggered).
+    if hasattr(vector_store, "_ensure_created"):
+        try:
+            await vector_store._ensure_created()
+            logger.info("qdrant_collection_ready", extra={
+                "collection": getattr(vector_store, "_collection_name", "unknown"),
+            })
+        except Exception as exc:
+            logger.warning("qdrant_collection_create_failed", extra={"error": str(exc)})
+
     # Store on app state (before scheduler, so scheduler can reference app_state)
     app.state.engine = engine
     app.state.session_factory = session_factory

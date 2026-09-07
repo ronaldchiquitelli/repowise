@@ -138,7 +138,9 @@ def resolve_enabled_tools(
         return default_surface
 
     if len(tokens) == 1 and tokens[0].lower() == ALL:
-        return {name for name, e in catalog.items() if usable(e)}
+        # --all truly exposes EVERY tool, including workspace-only ones.
+        # Workspace tools gracefully degrade when called outside workspace context.
+        return set(catalog.keys())
 
     if len(tokens) == 1 and tokens[0].lower() == LEAN:
         names = LEAN_TOOLS | (_LEAN_WORKSPACE_EXTRAS if is_workspace else frozenset())

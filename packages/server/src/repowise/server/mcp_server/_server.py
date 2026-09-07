@@ -290,25 +290,49 @@ async def _load_vector_stores(repo_path: str | None) -> None:
         embedder = _resolve_embedder()
         vector_store: Any = InMemoryVectorStore(embedder=embedder)
 
-        try:
-            # Step 1 — import lancedb in a thread to keep event loop free.
-            await _asyncio.to_thread(__import__, "lancedb")
+        # Qdrant takes priority when QDRANT_URL is set (opt-in remote store).
+        qdrant_url = os.environ.get("QDRANT_URL")
+        if qdrant_url:
+            try:
+                from repowise.core.persistence.vector_store import QdrantVectorStore
 
-            from repowise.core.persistence.vector_store import LanceDBVectorStore
+                collection = os.environ.get("QDRANT_COLLECTION", "repowise-wiki")
+                qdrant_store = QdrantVectorStore(
+                    collection=collection,
+                    embedder=embedder,
+                    url=qdrant_url,
+                )
+                # Ensure collection exists at startup
+                await qdrant_store._ensure_created()
+                vector_store = qdrant_store
+                _log.info(
+                    "repowise MCP: Qdrant vector store ready (%s, collection=%s)",
+                    qdrant_url, collection,
+                )
+            except Exception as exc:
+                _log.warning(
+                    "repowise MCP: Qdrant unavailable, falling back — %s", exc,
+                )
+        else:
+            try:
+                # Step 1 — import lancedb in a thread to keep event loop free.
+                await _asyncio.to_thread(__import__, "lancedb")
 
-            if repo_path:
-                from pathlib import Path
+                from repowise.core.persistence.vector_store import LanceDBVectorStore
 
-                lance_dir = Path(repo_path) / ".repowise" / "lancedb"
-                if lance_dir.exists():
-                    vs = LanceDBVectorStore(str(lance_dir), embedder=embedder)
-                    # Step 2 — pre-connect so first search() is instant.
-                    await vs._ensure_connected()
-                    vector_store = vs
-        except ImportError:
-            pass
-        except Exception:
-            _log.warning("LanceDB pre-connect failed — using InMemory fallback")
+                if repo_path:
+                    from pathlib import Path
+
+                    lance_dir = Path(repo_path) / ".repowise" / "lancedb"
+                    if lance_dir.exists():
+                        vs = LanceDBVectorStore(str(lance_dir), embedder=embedder)
+                        # Step 2 — pre-connect so first search() is instant.
+                        await vs._ensure_connected()
+                        vector_store = vs
+            except ImportError:
+                pass
+            except Exception:
+                _log.warning("LanceDB pre-connect failed — using InMemory fallback")
 
         # decision_store is repointed to the shared page store — decisions are
         # now embedded under the "decision:" namespace within the same table.
