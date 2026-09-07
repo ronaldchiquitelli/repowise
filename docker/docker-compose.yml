@@ -108,3 +108,8 @@ services:
 
 volumes:
   repowise-data:
+
+networks:
+  default:
+    name: coolify_default
+    external: true
