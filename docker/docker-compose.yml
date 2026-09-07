@@ -99,13 +99,11 @@ services:
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
 
       # ---- Vector store: remote Qdrant (opt-in) ----
-      # Qdrant is opt-in: set these in Coolify env vars ONLY after confirming
-      # network connectivity between repowise and qdrant containers.
-      # The entrypoint does NOT pass these to init commands — only to servers.
-      # For now, disabled to prevent container crash on startup.
-      # - QDRANT_URL=${QDRANT_URL:-}
-      # - QDRANT_API_KEY=${QDRANT_API_KEY:-}
-      # - QDRANT_COLLECTION=${QDRANT_COLLECTION:-repowise-wiki}
+      # Qdrant vars are in the container env so servers can use them.
+      # The entrypoint explicitly UNSETs them for init commands (init uses LanceDB).
+      - QDRANT_URL=${QDRANT_URL:-}
+      - QDRANT_API_KEY=${QDRANT_API_KEY:-}
+      - QDRANT_COLLECTION=${QDRANT_COLLECTION:-repowise-wiki}
     restart: unless-stopped
 
 volumes:
